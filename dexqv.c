@@ -240,7 +240,7 @@ static HScheme *Huffman(uint64 *hist, HScheme *inscheme)
             scheme->type = 1;
         }
     }
-  
+
   return (scheme);
 }
 
@@ -348,12 +348,8 @@ static void Encode_Run(HScheme *neme, HScheme *reme, FILE *out, uint8 *read, int
   else
     nspec = nslen = 0x7fffffff;
 
-  if (reme->type == 2)
-    { rspec = rbits[255];
-      rslen = rlens[255];
-    }
-  else
-    rspec = rslen = 0x7fffffff;
+  rspec = rbits[255];
+  rslen = rlens[255];
 
   llen  = 0;
   olen  = 0;
@@ -570,32 +566,32 @@ int main(int argc, char* argv[])
             { epos += 6;
               sprintf(full,"%s.quiva",path);
             }
-  
+
           input = Guarded_Fopen(full,"r");
-  
+
           if (VERBOSE)
             { fprintf(stderr,"Processing '%s' ...",full);
               fflush(stderr);
             }
-  
+
           strcpy(full+(epos-6),".dexqv");
           output = Guarded_Fopen(full,"w");
-  
+
           strcpy(full+(epos-6),".quiva");
         }
-  
+
         //  Zero the histograms
-  
+
         bzero(delHist,sizeof(uint64)*256);
         bzero(delRun,sizeof(uint64)*256);
         bzero(mrgHist,sizeof(uint64)*256);
         bzero(insHist,sizeof(uint64)*256);
         bzero(subHist,sizeof(uint64)*256);
         bzero(subRun,sizeof(uint64)*256);
-  
+
         //  Make a sweep through the .quiva entries, histogramming the relevant things
         //    and figuring out the run chars for the deletion and substition streams
-  
+
         totChar = 0;
         delChar = -1;
         subChar = -1;
@@ -603,7 +599,7 @@ int main(int argc, char* argv[])
         while (1)
           { int    rlen, well, beg, end, qv;
             char  *slash;
-  
+
             rlen = Read_Seq(input,1);
             if (rlen < 0)
               break;
@@ -622,7 +618,7 @@ int main(int argc, char* argv[])
                                Program_Name,Nline);
                 exit (1);
               }
-  
+
             rlen = Read_Seq(input,5);
 
             Histogram_Seqs(delHist,(uint8 *) (Read),rlen);
@@ -663,15 +659,15 @@ int main(int argc, char* argv[])
           subChar = -1;
 
         //  If lossy encryption is enabled then scale insertions and merge QVs.
-  
+
         if (LOSSY)
           { int k;
-  
+
             for (k = 0; k < 256; k += 2)
               { insHist[k] += insHist[k+1];
                 insHist[k+1] = 0;
               }
-  
+
             for (k = 0; k < 256; k += 4)
               { mrgHist[k] += mrgHist[k+1];
                 mrgHist[k] += mrgHist[k+2];
@@ -681,9 +677,9 @@ int main(int argc, char* argv[])
                 mrgHist[k+3] = 0;
               }
           }
-  
+
         //  Build a Huffman scheme for each stream entity from the histograms
-  
+
 #define SCHEME_MACRO(meme,hist,label,bits)	\
   scheme = Huffman( (hist), NULL);		\
   if (scheme->type)				\
@@ -707,9 +703,9 @@ int main(int argc, char* argv[])
   SCHEME_MACRO(meme,hist,label,bits)
 
 #endif
-  
+
         { HScheme *scheme;
-  
+
           if (delChar < 0)
             { MAKE_SCHEME(delScheme,delHist, "Hisotgram of Deletion QVs", 8); }
           else
@@ -720,18 +716,18 @@ int main(int argc, char* argv[])
               printf("\nRun char is '%c'\n",delChar);
 #endif
             }
-  
+
 #ifdef DEBUG
           { int    k;
             uint64 count;
-  
+
             count = 0;
             for (k = 0; k < 256; k++)
               count += delHist[k];
             printf("\nDelTag will require %lld bytes\n",count/4);
           }
 #endif
-  
+
           MAKE_SCHEME(insScheme,insHist, "Hisotgram of Insertion QVs", 8);
           MAKE_SCHEME(mrgScheme,mrgHist, "Hisotgram of Merge QVs", 8);
 
@@ -746,41 +742,41 @@ int main(int argc, char* argv[])
 #endif
             }
         }
-  
+
         //  In a second pass ...
-  
+
         rewind(input);
-  
+
         //   Get the first header and write out the endian key, run chars, and short name
-  
+
         { uint16 half;
           int    spos;
           char  *slash;
-  
+
           half = 0x33cc;
           fwrite(&half,sizeof(uint16),1,output);
-  
+
           if (delChar < 0)
             half = 256;
           else
             half = delChar;
           fwrite(&half,sizeof(uint16),1,output);
-  
+
           if (subChar < 0)
             half = 256;
           else
             half = subChar;
           fwrite(&half,sizeof(uint16),1,output);
-  
+
           Read_Seq(input,1);
           slash = index(Read,'/');
           spos = slash-Read;
           fwrite(&spos,sizeof(int),1,output);
           fwrite(Read,1,spos,output);
         }
-  
+
         //   Write out the scheme tables
-  
+
         Write_Scheme(delScheme,output);
         if (delChar >= 0)
           Write_Scheme(dRunScheme,output);
@@ -789,9 +785,9 @@ int main(int argc, char* argv[])
         Write_Scheme(subScheme,output);
         if (subChar >= 0)
           Write_Scheme(sRunScheme,output);
-  
+
         //   For each entry
-  
+
         { int lwell;
 
           lwell = 0;
@@ -801,12 +797,12 @@ int main(int argc, char* argv[])
               char  *slash;
               uint16 half;
               uint8  byte;
-    
+
               //  Interpret the header, encode and write out the fields
-    
+
               slash = index(Read,'/');
               sscanf(slash+1,"%d/%d_%d RQ=0.%d\n",&well,&beg,&end,&qv);
-    
+
               while (well - lwell >= 255)
                 { byte = 0xff;
                   fwrite(&byte,1,1,output);
@@ -815,16 +811,16 @@ int main(int argc, char* argv[])
               byte = (uint8) (well-lwell);
               fwrite(&byte,1,1,output);
               lwell = well;
-    
+
               half = (uint16) beg;
               fwrite(&half,sizeof(uint16),1,output);
               half = (uint16) end;
               fwrite(&half,sizeof(uint16),1,output);
               half = (uint16) qv;
               fwrite(&half,sizeof(uint16),1,output);
-    
+
               //  Get all 5 streams, compress each with its scheme, and output
-    
+
               rlen = Read_Seq(input,5);
               if (delChar < 0)
                 { Encode(delScheme, output, (uint8 *) Read, rlen);
@@ -836,18 +832,18 @@ int main(int argc, char* argv[])
                 }
               Compress_Read(clen,Read+Rmax);
               fwrite(Read+Rmax,1,COMPRESSED_LEN(clen),output);
-    
+
               if (LOSSY)
                 { uint8 *insert = (uint8 *) (Read+2*Rmax);
                   uint8 *merge  = (uint8 *) (Read+3*Rmax);
                   int    k;
-    
+
                   for (k = 0; k < rlen; k++)
                     { insert[k] = ((insert[k] >> 1) << 1);
                       merge[k]  = (( merge[k] >> 2) << 2);
                     }
                 }
-    
+
               Encode(insScheme, output, (uint8 *) (Read+2*Rmax), rlen);
               Encode(mrgScheme, output, (uint8 *) (Read+3*Rmax), rlen);
               if (subChar < 0)
@@ -857,9 +853,9 @@ int main(int argc, char* argv[])
             }
           while (Read_Seq(input,1) >= 0);
         }
-  
+
         //  Clean up for the next iteration
-  
+
         if (subChar >= 0)
           free(sRunScheme);
         free(subScheme);
@@ -868,14 +864,14 @@ int main(int argc, char* argv[])
         if (delChar >= 0)
           free(dRunScheme);
         free(delScheme);
-  
+
         fclose(input);
         fclose(output);
-  
+
         if (!KEEP)
           unlink(full);
         free(full);
-  
+
         if (VERBOSE)
           { fprintf(stderr," Done\n");
             fflush(stderr);

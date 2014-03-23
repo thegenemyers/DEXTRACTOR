@@ -68,12 +68,12 @@ int main(int argc, char *argv[])
     for (i = 1; i < argc; i++)
       { FILE   *input, *output;
         char   *full;
-  
+
         // Open dexta file
-  
+
         { char *path;
           int   epos;
-  
+
           path = argv[i];
           full = (char *) Guarded_Alloc(NULL,strlen(path)+20);
           epos = strlen(path);
@@ -83,54 +83,54 @@ int main(int argc, char *argv[])
             { epos += 6;
               sprintf(full,"%s.dexta",path);
             }
-  
+
           input = Guarded_Fopen(full,"r");
-  
+
           if (VERBOSE)
             { fprintf(stderr,"Processing '%s' ...",full);
               fflush(stderr);
             }
-  
+
           strcpy(full+(epos-6),".fasta");
           output = Guarded_Fopen(full,"w");
-  
+
           strcpy(full+(epos-6),".dexta");
         }
-  
+
         { char *name;
           int   well, flip;
-  
+
           // Read endian key and short name common to all headers
-   
+
           { uint16 half;
-  
+
             fread(&half,sizeof(uint16),1,input);
             flip = (half != 0x33cc);
-  
+
             fread(&well,sizeof(int),1,input);
             if (flip) flip_long(&well);
             name = (char *) Guarded_Alloc(NULL,well+1);
             fread(name,1,well,input);
             name[well] = '\0';
           }
-  
+
           // For each encoded entry do
-  
+
           well = 0;
           while (1)
             { int    rlen, beg, end, qv;
               uint16 half;
               uint8  byte;
-    
+
               //  Read and decompress header and output
-    
+
               if (fread(&byte,1,1,input) < 1) break;
               while (byte == 255)
                 { well += 255;
                   fread(&byte,1,1,input);
                 }
               well += byte;
-    
+
               if (flip)
                 { fread(&half,sizeof(uint16),1,input);
                   flip_short(&half);
@@ -150,12 +150,12 @@ int main(int argc, char *argv[])
                   fread(&half,sizeof(uint16),1,input);
                   qv = half;
                 }
-    
+
               fprintf(output,"%s/%d/%d_%d RQ=0.%d\n",name,well,beg,end,qv);
-    
+
               //  Read compressed sequence (into buffer big enough for uncompressed sequence)
               //  Uncompress and output 70 symbols to a line
-    
+
               rlen = end-beg;
               if (rlen > rmax)
                 { rmax = 1.2 * rmax + 1000 + MAX_BUFFER;
@@ -163,21 +163,21 @@ int main(int argc, char *argv[])
                 }
               fread(read,1,COMPRESSED_LEN(rlen),input);
               Uncompress_Read(rlen,read);
-    
+
               for (i = 0; i < rlen; i += 70)
                 if (i+70 > rlen)
                   fprintf(output,"%.*s\n", rlen-i, read+i);
                 else
                   fprintf(output,"%.70s\n", read+i);
             }
-  
+
           free(name);
         }
-  
+
         if (!KEEP)
           unlink(full);
         free(full);
-  
+
         if (VERBOSE)
           { fprintf(stderr," Done\n");
             fflush(stderr);

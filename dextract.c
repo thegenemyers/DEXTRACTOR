@@ -7,7 +7,8 @@
  *  Date  :  Dec 12, 2013
  *
  *  Author:  Gene Myers
- *  Date:    Jan 8, 2014, rewrite of the entire code base
+ *  Date:    Jan 8, 2014, redesign of the modes of operation and flags, and also the
+ *               logic for extraction in writeBaxReads
  *
  ********************************************************************************************/
 
@@ -42,33 +43,31 @@ static char *Usage = "[-qS] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:ba
 #define BAX_REGION_ERR		-10
 
 typedef struct
-  { char   *fullName;      // full path
-    char   *shortName;     // without path and file extension (used for output: fasta, fastq)
-    hsize_t length;        // sum of all raw reads
-    int     id;            // arbitrary file ID, used within DB creation
-    int     fastq;         // if set produce a fastq file instead of a fasta file
-    int     quivqv;        // if set produce a quiv file
-    char   *baseCall;      // fields, that can be extracted
+  { char   *fullName;      // full file path
+    char   *shortName;     // without path and file extension (used in header line)
+    hsize_t length;        // sum of all raw read lengths
+    int     fastq;         // if non-zero produce a fastq file instead of a fasta file
+    int     quivqv;        // if non-zero produce a quiv file
+    char   *baseCall;      // 7 streams that may be extracted dependent on flag settings
     char   *delQV;
     char   *delTag;
     char   *insQV;
     char   *mergeQV;
     char   *subQV;
-    char   *qualityValue;
+    char   *fastQV;
   } BaxData;
 
 //  Initialize *the* BaxData structure
 
 static void initBaxData(BaxData *b, int fastq, int quivqv)
-{ b->fullName     = NULL;
-  b->shortName    = NULL;
-  b->length       = 0;
-  b->id           = -1;
-  b->fastq        = fastq;
-  b->quivqv       = quivqv;
-  b->baseCall     = NULL;
-  b->delQV        = NULL;
-  b->qualityValue = NULL;
+{ b->fullName  = NULL;
+  b->shortName = NULL;
+  b->length    = 0;
+  b->fastq     = fastq;
+  b->quivqv    = quivqv;
+  b->baseCall  = NULL;
+  b->delQV     = NULL;
+  b->fastQV    = NULL;
 }
 
 //  Record the names of the next bax file and reset the memory buffer high-water mark
@@ -87,7 +86,6 @@ static void initBaxNames(BaxData *b, char *fname, char *hname)
 
   free(b->shortName);
 
-  b->id       += 1;
   b->fullName  = fname;
   b->shortName = Guarded_Strdup(beg);
   b->length    = 0;
@@ -105,7 +103,7 @@ static void ensureCapacity(BaxData *b, hsize_t length)
     { smax = 1.2*length + 10000;
       b->baseCall = (char *) Guarded_Alloc(b->baseCall, smax);
       if (b->fastq)
-        b->qualityValue = (char *) Guarded_Alloc(b->qualityValue, smax);
+        b->fastQV = (char *) Guarded_Alloc(b->fastQV, smax);
       if (b->quivqv)
         { b->delQV   = (char *) Guarded_Alloc(b->delQV, 5ll*smax);
           b->delTag  = b->delQV + smax;
@@ -123,7 +121,7 @@ static hid_t getBaxData(BaxData *b)
   hid_t   field_set;
   hsize_t field_len[1];
   hid_t   file_id;
- 
+
   H5Eset_auto(H5E_DEFAULT,0,0); // silence hdf5 error stack
 
   file_id = H5Fopen(b->fullName, H5F_ACC_RDONLY, H5P_DEFAULT);
@@ -153,7 +151,7 @@ static hid_t getBaxData(BaxData *b)
 
   FETCH(baseCall,"/PulseData/BaseCalls/Basecall",BAX_BASECALL_ERR)
   if (b->fastq)
-    FETCH(qualityValue,"/PulseData/BaseCalls/QualityValue",BAX_QV_ERR)
+    FETCH(fastQV,"/PulseData/BaseCalls/QualityValue",BAX_QV_ERR)
   if (b->quivqv)
     { FETCH(delQV,"/PulseData/BaseCalls/DeletionQV",BAX_DELETIONQV_ERR)
       FETCH(delTag,"/PulseData/BaseCalls/DeletionTag",BAX_DELETIONTAG_ERR)
@@ -249,7 +247,7 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
         { int *bot, *top, *hqv, *r;
           int hbeg, hend, qv;
           int ibeg, iend;
-  
+
           if (hlen[h] >= minLen)
             { while (cur[HOLE] < h)
                 cur += 5;
@@ -260,7 +258,7 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
                   cur += 5;
                 }
               top = cur-5;
-  
+
               qv = hqv[SCORE];
               if (qv >= minScore)
                 { hbeg = hqv[START];
@@ -268,71 +266,71 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
                   for (r = bot; r <= top; r += 5)
                     { if (r[TYPE] != INSERT_REGION)
                         continue;
-  
+
                       ibeg = r[START];
                       iend = r[FINISH];
-  
+
                       if (ibeg < hbeg)
                         ibeg = hbeg;
                       if (iend > hend)
                         iend = hend;
                       if (iend - ibeg < minLen)
                         continue;
-              
+
                       if (b->fastq)
                         { int a;
-  
+
                           fprintf(output,"@%s/%d/%d_%d RQ=0.%d\n",b->shortName,h,ibeg,iend,qv);
-  
+
                           ibeg += roff;
                           iend += roff;
-  
+
                           fprintf(output,"%.*s\n", iend-ibeg, b->baseCall + ibeg);
                           fprintf(output,"+\n");
                           for (a = ibeg; a < iend; a++)
-                            fputc(b->qualityValue[a]+PHRED_OFFSET,output);
+                            fputc(b->fastQV[a]+PHRED_OFFSET,output);
                           fputc('\n',output);
                         }
                       else
                         { int a;
 
                           fprintf(output,">%s/%d/%d_%d RQ=0.%d\n",b->shortName,h,ibeg,iend,qv);
-  
+
                           ibeg += roff;
                           iend += roff;
-                           
+
                           for (a = ibeg; a < iend; a += 70)
                             if (a+70 > iend)
                               fprintf(output,"%.*s\n", iend-a, b->baseCall + a);
                             else
                               fprintf(output,"%.70s\n", b->baseCall + a);
                         }
-  
+
                       if (b->quivqv)
                         { int a;
-  
+
                           ibeg -= roff;
                           iend -= roff;
-  
+
                           fprintf(qvquiv,"@%s/%d/%d_%d RQ=0.%d\n",b->shortName,h,ibeg,iend,qv);
-  
+
                           ibeg += roff;
                           iend += roff;
-  
+
                           for (a = ibeg; a < iend; a++)
                             fputc(b->delQV[a]+PHRED_OFFSET,qvquiv);
                           fputc('\n',qvquiv);
-  
+
                           fprintf (qvquiv, "%.*s\n", iend-ibeg, b->delTag + ibeg);
-  
+
                           for (a = ibeg; a < iend; a++)
                             fputc(b->insQV[a]+PHRED_OFFSET,qvquiv);
                           fputc('\n',qvquiv);
-  
+
                           for (a = ibeg; a < iend; a++)
                             fputc(b->mergeQV[a]+PHRED_OFFSET,qvquiv);
                           fputc('\n',qvquiv);
-  
+
                           for (a = ibeg; a < iend; a++)
                             fputc(b->subQV[a]+PHRED_OFFSET,qvquiv);
                           fputc('\n',qvquiv);
@@ -398,8 +396,8 @@ static void freeBaxData(BaxData *b)
     free(b->baseCall);
   if (b->delQV != NULL)
     free(b->delQV);
-  if (b->qualityValue != NULL)
-    free(b->qualityValue);
+  if (b->fastQV != NULL)
+    free(b->fastQV);
   free(b->shortName);
 }
 
@@ -425,6 +423,13 @@ int main(int argc, char* argv[])
   output    = NULL;
 
   Program_Name = argv[0];
+
+  //  Check that zlib library is present
+
+  if ( ! H5Zfilter_avail(H5Z_FILTER_DEFLATE))
+    { fprintf(stderr,"%s: zlib library is not present, check build/installation\n",Program_Name);
+      exit (1);
+    }
 
   { int   i, j, k;
     char *eptr;
@@ -498,7 +503,7 @@ int main(int argc, char* argv[])
           if (eos != NULL)
             *eos   = '\0';
         }
- 
+
       name = (char *) Guarded_Alloc(NULL,strlen(output) + 20);
 
       if (FASTQ)
@@ -530,10 +535,10 @@ int main(int argc, char* argv[])
       { char *full;
         hid_t fileID;
         int   ecode;
-  
+
         { int   epos;
           char *input;
-  
+
           input = argv[i];
           full = (char *) Guarded_Alloc(NULL,strlen(input) + 20);
           epos = strlen(input);
@@ -541,7 +546,7 @@ int main(int argc, char* argv[])
             strcpy(full,input);
           else
             { FILE *in;
-    
+
               sprintf(full,"%s.bax.h5",input);
               if ((in = fopen(full,"r")) == NULL)
                 { fprintf(stderr,"%s: Cannot find %s !\n",Program_Name,input);
@@ -550,25 +555,25 @@ int main(int argc, char* argv[])
               else
                 fclose(in);
             }
-  
+
           if (QUIVQV)
             initBaxNames(&b,full,output);
           else
             initBaxNames(&b,full,input);
         }
-    
+
         if (VERBOSE)
           { fprintf(stderr, "Fetching file : %s ...", full); fflush(stderr); }
         ecode = fileID = getBaxData(&b);
-  
+
         if (ecode > 0)
           { if (VERBOSE)
               { fprintf(stderr, " Extracting subreads ..."); fflush(stderr); }
             ecode = writeBaxReads(&b, fileID, MIN_LEN, MIN_SCORE, fileOut, fileQuiv);
-  
+
             H5Fclose(fileID);
           }
-  
+
         if (ecode < 0)
           { if (VERBOSE)
               fprintf(stderr, " Skipping due to failure\n"); 

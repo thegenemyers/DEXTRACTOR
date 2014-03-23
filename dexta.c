@@ -70,12 +70,12 @@ int main(int argc, char *argv[])
       { FILE   *input, *output;
         char   *full;
         int     eof;
-  
+
         // Open fasta file
-  
+
         { char *path;
           int   epos;
-  
+
           path = argv[i];
           full = (char *) Guarded_Alloc(NULL,strlen(path)+20);
           epos = strlen(path);
@@ -85,26 +85,26 @@ int main(int argc, char *argv[])
             { epos += 6;
               sprintf(full,"%s.fasta",path);
             }
-  
+
           input = Guarded_Fopen(full,"r");
-  
+
           if (VERBOSE)
             { fprintf(stderr,"Processing '%s' ...",full);
               fflush(stderr);
             }
-  
+
           strcpy(full+(epos-6),".dexta");
           output = Guarded_Fopen(full,"w");
-  
+
           strcpy(full+(epos-6),".fasta");
         }
-  
+
         // Read the first header and output the endian key and short name
-  
+
         { char  *slash;
           uint16 half;
           int    x;
-  
+
           eof = (fgets(read,MAX_BUFFER,input) == NULL);
           if (read[strlen(read)-1] != '\n')
             { fprintf(stderr,"Line 1: Fasta line is too long (> %d chars)\n",MAX_BUFFER-2);
@@ -114,23 +114,23 @@ int main(int argc, char *argv[])
             { fprintf(stderr,"Line 1: First header in fasta file is missing\n");
               exit (1);
             }
-  
+
           slash = index(read,'/');
           if (slash == NULL)
             { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Program_Name);
               exit (1);
             }
-  
+
           half = 0x33cc;
           fwrite(&half,sizeof(uint16),1,output);
-  
+
           x = slash-read;
           fwrite(&x,sizeof(int),1,output);
           fwrite(read,1,slash-read,output);
         }
-  
+
         //  For each read do
-  
+
         { int  nline, rlen, lwell;
 
           nline = 1;
@@ -141,9 +141,9 @@ int main(int argc, char *argv[])
               char  *slash;
               uint16 half;
               uint8  byte;
-    
+
               //  Next header is always at read+(rlen+1).  Interpret its fields
-    
+
               slash = index(read+(rlen+1),'/');
               if (slash == NULL)
                 { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Program_Name);
@@ -153,13 +153,13 @@ int main(int argc, char *argv[])
                 { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Program_Name);
                   exit (1);
                 }
-    
+
               //  Read fasta sequence (@read) and stop at eof or after having read next header
-    
+
               rlen = 0;
               while (1)
                 { int x;
-    
+
                   eof = (fgets(read+rlen,MAX_BUFFER,input) == NULL);
                   nline += 1;
                   x      = strlen(read+rlen)-1;
@@ -177,9 +177,9 @@ int main(int argc, char *argv[])
                     }
                 }
               read[rlen] = '\0';
-    
+
               //  Compress the header fields and output (except for short name, only output once)
-    
+
               while (well - lwell >= 255)
                 { byte = 0xff;
                   fwrite(&byte,1,1,output);
@@ -188,25 +188,25 @@ int main(int argc, char *argv[])
               byte = (uint8) (well-lwell);
               fwrite(&byte,1,1,output);
               lwell = well;
-    
+
               half = (uint16) beg;
               fwrite(&half,sizeof(uint16),1,output);
               half = (uint16) end;
               fwrite(&half,sizeof(uint16),1,output);
               half = (uint16) qv;
               fwrite(&half,sizeof(uint16),1,output);
-    
+
               //  Compress read and output
-    
+
               Compress_Read(rlen,read);
               fwrite(read,1,COMPRESSED_LEN(rlen),output);
             }
         }
-  
+
         if (!KEEP)
           unlink(full);
         free(full);
-  
+
         if (VERBOSE)
           { fprintf(stderr," Done\n");
             fflush(stderr);

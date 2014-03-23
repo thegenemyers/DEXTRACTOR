@@ -8,17 +8,17 @@
 The Dextractor commands allow one to pull exactly and only the information needed for assembly
 and reconstruction from the source .bax.h5 HDF5 files produced by the PacBio RS II sequencer.
 Generally speaking, this information is the sequence of all the reads coded in the .bax.h5 file
-and a number of quality value streams needed by Quiver to produce a highly accurate consensus
+and a number of quality value (QV) streams needed by Quiver to produce a highly accurate consensus
 sequence as the last step in the assembly process.  The Dextractor therefore produces a .fasta
-file of the sequence of all the reads, and a .quiva file containing the stream information in
+file of the sequence of all the reads, and a .quiva file containing the QV stream information in
 a .fastq readable format.  For each of these two file types the library contains commands to
 compress the given file type, and to decompress it, which is a reversible process delivering
 the original uncompressed file.  In this way, users of a PacBio can keep the data needed for
 assembly spooled up on disk in 1/14th the space occupied by the .bax.h5 files which can be
-archived to a cheap backup medium such as tape, should the raw data ever needs to be consulted
-again (we expect never unless the spooled up data is compromised or last in some way).  The
-compressor/decompressor pairs are endian-aware so moving compressed files between machines
-should never be an issue.
+archived to a cheap backup medium such as tape, should the raw data ever need to be consulted
+again (we expect never unless the spooled up data is compromised or lost in some way).  The
+compressor/decompressor pairs are endian-aware so moving compressed files between machines is
+possible.
 
 1. dextract  [-qS] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax.h5> ...
 
@@ -26,7 +26,7 @@ should never be an issue.
 
     (a) if the -o option is set, then the information needed for Quiver is extracted and put
           in a file named <path>.quiva.  If the -q option is not set, then the sequence of
-          each read is place in a file named <path>.fasta, otherwise a .fastq file of the
+          each read is placed in a file named <path>.fasta, otherwise a .fastq file of the
           sequence and the imputed "quality values" for each base in the sequence is placed
           in a file named <path>.fastq.  We personally do not find these values useful and
           so never set -q but we give you the option in case your downstream processes use
@@ -50,7 +50,7 @@ should never be an issue.
    undexta [-Sk] <path:dexta> ...
 
     Dexta compresses a set of .fasta files (produced by either Pacbio's software or dextract)
-    replaces them with new files with a .dexta extension.  That is, submitting xxx.fasta will
+    and replaces them with new files with a .dexta extension.  That is, submitting xxx.fasta will
     result in a compressed image xxx.dexta, and xxx.fasta will no longer exist.  With the -k
     option the .fasta source is *not* removed, and with -S set, the program runs completely
     silently (good for batch jobs to an HPC cluster).  The compression factor is always
@@ -65,7 +65,7 @@ should never be an issue.
     xxx.quiva will not longer exist.  The -k flag prevents the removal of xxx.quiva and the
     -S option makes dexqv completely silent.  If slightly more compression is desired at the
     expense of being a bit "lossy" then set the -l option.  This option is experimental in that
-    it remains to be seen if Quiver gives the same results with the scaled values inducing the
+    it remains to be seen if Quiver gives the same results with the scaled values responsible for the
     loss.  Undexqv reverses the compression of dexqv, replacing the uncompressed image of xxx.dexqv
     with xxx.quiva.  The flags are analgous to the S and k flags for dexqv.  The compression
     factor is typically 3.4 or so (4.0 or so with -l set).

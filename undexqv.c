@@ -77,7 +77,7 @@ static void Print_Table(HScheme *scheme)
 }
 
 #endif
- 
+
   //  Allocate and read a code table from in, and return a pointer to it.
 
 static HScheme *Read_Scheme(FILE *in)
@@ -212,7 +212,7 @@ static void Decode_Run(HScheme *neme, HScheme *reme, FILE *in, char *read,
                        int rlen, int rchar)
 { int    *nlook, *nlens;
   int    *rlook, *rlens;
-  int     nsignal, rsignal, ilen;
+  int     nsignal, ilen;
   uint64  icode;
   uint32 *ipart;
   uint16 *xpart;
@@ -237,10 +237,6 @@ static void Decode_Run(HScheme *neme, HScheme *reme, FILE *in, char *read,
   nlens = neme->codelens;
   nlook = neme->lookup;
 
-  if (reme->type == 2)
-    rsignal = 255;
-  else
-    rsignal = 256;
   rlens = reme->codelens;
   rlook = reme->lookup;
 
@@ -251,7 +247,7 @@ static void Decode_Run(HScheme *neme, HScheme *reme, FILE *in, char *read,
       { GETFLIP
         c = rlook[*xpart];
         n = rlens[c];
-        if (c == rsignal)
+        if (c == 255)
           { GETFLIP
             c = *xpart;
             n = 16;
@@ -276,7 +272,7 @@ static void Decode_Run(HScheme *neme, HScheme *reme, FILE *in, char *read,
       { GET
         c = rlook[*xpart];
         n = rlens[c];
-        if (c == rsignal)
+        if (c == 255)
           { GET
             c = *xpart;
             n = 16;
@@ -390,12 +386,12 @@ int main(int argc, char* argv[])
     for (i = 1; i < argc; i++)
       { FILE *input, *output;
         char *full;
-  
+
         //   Open it and the appropriately named .quiva file
-  
+
         { char *path;
           int   epos;
-  
+
           path = argv[i];
           full = (char *) Guarded_Alloc(NULL,strlen(path)+20);
           epos = strlen(path);
@@ -405,20 +401,20 @@ int main(int argc, char* argv[])
             { epos += 6;
               sprintf(full,"%s.dexqv",path);
             }
-  
+
           input = Guarded_Fopen(full,"r");
-  
+
           if (VERBOSE)
             { fprintf(stderr,"Processing '%s' ... ",full);
               fflush(stderr);
             }
-  
+
           strcpy(full+(epos-6),".quiva");
           output = Guarded_Fopen(full,"w");
-  
+
           strcpy(full+(epos-6),".dexqv");
         }
-  
+
         //  Read the short name common to all headers
 
         { HScheme  *delScheme, *insScheme, *mrgScheme, *subScheme;
@@ -452,9 +448,9 @@ int main(int argc, char* argv[])
             fread(name,1,well,input);
             name[well] = '\0';
           }
-  
+
           //  Read the Huffman schemes used to compress the data
-    
+
           delScheme  = Read_Scheme(input);
           if (delChar >= 0)
             dRunScheme = Read_Scheme(input);
@@ -463,24 +459,24 @@ int main(int argc, char* argv[])
           subScheme  = Read_Scheme(input);
           if (subChar >= 0)
             sRunScheme = Read_Scheme(input);
-  
+
           //  For each compressed entry do
-  
+
           well = 0;
           while (1)
             { int    rlen, clen, beg, end, qv;
               uint16 half;
               uint8  byte;
-    
+
               //  Decode the compressed header and write it out
-    
+
               if (fread(&byte,1,1,input) < 1) break;
               while (byte == 255)
                 { well += 255;
                   fread(&byte,1,1,input);
                 }
               well += byte;
-    
+
               if (Flip)
                 { fread(&half,sizeof(uint16),1,input);
                   flip_short(&half);
@@ -500,19 +496,19 @@ int main(int argc, char* argv[])
                   fread(&half,sizeof(uint16),1,input);
                   qv = half;
                 }
-    
+
               fprintf(output,"%s/%d/%d_%d RQ=0.%d\n",name,well,beg,end,qv);
-    
+
               //  Make sure read buffer is big enough for the uncompressed streams
-    
+
               rlen = end-beg;
               if (rlen > rmax)
                 { rmax = 1.2 * rlen + 1000;
                   read = (char *) Guarded_Alloc(read,2*rmax+1);
                 }
-    
+
               //  Decode each stream and write to output
-    
+
               if (delChar < 0)
                 { Decode(delScheme, input, read, rlen);
                   clen = rlen;
@@ -522,26 +518,26 @@ int main(int argc, char* argv[])
                   clen = Packed_Length(read,rlen,delChar);
                 }
               fprintf(output,"%.*s\n",rlen,read);
-    
+
               fread(read+rmax,1,COMPRESSED_LEN(clen),input);
               Uncompress_Read(clen,read+rmax);
               if (delChar >= 0)
                 Unpack_Tag(read+rmax,clen,read,rlen,delChar);
               fprintf(output,"%.*s\n",rlen,read+rmax);
-    
+
               Decode(insScheme, input, read, rlen);
               fprintf(output,"%.*s\n",rlen,read);
-    
+
               Decode(mrgScheme, input, read, rlen);
               fprintf(output,"%.*s\n",rlen,read);
-    
+
               if (subChar < 0)
                 Decode(subScheme, input, read, rlen);
               else
                 Decode_Run(subScheme, sRunScheme, input, read, rlen, subChar);
               fprintf(output,"%.*s\n",rlen,read);
             }
-  
+
           free(delScheme);
           free(insScheme);
           free(mrgScheme);
@@ -553,14 +549,14 @@ int main(int argc, char* argv[])
 
           free(name);
         }
-  
+
         fclose(input);
         fclose(output);
-  
+
         if (!KEEP)
           unlink(full);
         free(full);
-  
+
         if (VERBOSE)
           { fprintf(stderr," Done\n");
             fflush(stderr);
