@@ -592,10 +592,12 @@ int main(int argc, char* argv[])
         //  Make a sweep through the .quiva entries, histogramming the relevant things
         //    and figuring out the run chars for the deletion and substition streams
 
-        totChar = 0;
-        delChar = -1;
-        subChar = -1;
-        Nline   = 0;
+        totChar    = 0;
+        delChar    = -1;
+        subChar    = -1;
+        dRunScheme = NULL;
+        sRunScheme = NULL;
+        Nline      = 0;
         while (1)
           { int    rlen, well, beg, end, qv;
             char  *slash;

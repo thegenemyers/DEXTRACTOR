@@ -21,7 +21,7 @@
 
 #include <hdf5.h>
 
-#define PHRED_OFFSET  33
+#define PHRED_OFFSET 33
 
 static char *Usage = "[-qS] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax_h5> ...";
 
@@ -31,16 +31,16 @@ static char *Usage = "[-qS] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:ba
 
 // Exception codes
 
-#define CANNOT_OPEN_BAX_FILE 	-1
-#define BAX_BASECALL_ERR 	-2
-#define BAX_DELETIONQV_ERR 	-3
-#define BAX_DELETIONTAG_ERR 	-4
-#define BAX_INSERTIONQV_ERR 	-5
-#define BAX_MERGEQV_ERR 	-6
-#define BAX_SUBSTITUTIONQV_ERR 	-7
-#define BAX_QV_ERR 		-8
-#define BAX_NR_EVENTS_ERR 	-9
-#define BAX_REGION_ERR		-10
+#define CANNOT_OPEN_BAX_FILE   -1
+#define BAX_BASECALL_ERR       -2
+#define BAX_DELETIONQV_ERR     -3
+#define BAX_DELETIONTAG_ERR    -4
+#define BAX_INSERTIONQV_ERR    -5
+#define BAX_MERGEQV_ERR        -6
+#define BAX_SUBSTITUTIONQV_ERR -7
+#define BAX_QV_ERR             -8
+#define BAX_NR_EVENTS_ERR      -9
+#define BAX_REGION_ERR        -10
 
 typedef struct
   { char   *fullName;      // full file path
@@ -121,6 +121,7 @@ static hid_t getBaxData(BaxData *b)
   hid_t   field_set;
   hsize_t field_len[1];
   hid_t   file_id;
+  herr_t  stat;
 
   H5Eset_auto(H5E_DEFAULT,0,0); // silence hdf5 error stack
 
@@ -132,21 +133,23 @@ static hid_t getBaxData(BaxData *b)
   printf("PROCESSING %s, file_id: %d\n", baxFileName, file_id);
 #endif
 
-#define FETCH(field,path,error)								\
-  { field_set   = H5Dopen2(file_id, path, H5P_DEFAULT);					\
-    field_space = H5Dget_space(field_set);						\
-    if (field_set < 0 || field_space < 0)						\
-      { H5Fclose(file_id);								\
-        return (error);									\
-      }											\
-    if (b->length == 0)									\
-      { H5Sget_simple_extent_dims(field_space, field_len, NULL);			\
-        b->length = field_len[0];							\
-        ensureCapacity(b, field_len[0]);						\
-      }											\
-    H5Dread(field_set, H5T_NATIVE_UCHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT, b->field);	\
-    H5Sclose(field_space);								\
-    H5Dclose(field_set);								\
+#define FETCH(field,path,error)									\
+  { field_set   = H5Dopen2(file_id, path, H5P_DEFAULT);						\
+    field_space = H5Dget_space(field_set);							\
+    if (field_set < 0 || field_space < 0)							\
+      { H5Fclose(file_id);									\
+        return (error);										\
+      }												\
+    if (b->length == 0)										\
+      { H5Sget_simple_extent_dims(field_space, field_len, NULL);				\
+        b->length = field_len[0];								\
+        ensureCapacity(b, field_len[0]);							\
+      }												\
+    stat = H5Dread(field_set, H5T_NATIVE_UCHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT, b->field);	\
+    if (stat < 0)										\
+      return (error);										\
+    H5Sclose(field_space);									\
+    H5Dclose(field_set);									\
   }
 
   FETCH(baseCall,"/PulseData/BaseCalls/Basecall",BAX_BASECALL_ERR)

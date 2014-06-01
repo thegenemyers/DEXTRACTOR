@@ -177,8 +177,9 @@ static void Decode(HScheme *scheme, FILE *in, char *read, int rlen)
       ilen   -= n;				\
     }
 
-  n    = 16;
-  ilen = 0;
+  n     = 16;
+  ilen  = 0;
+  icode = 0;
   if (Flip)
     for (j = 0; j < rlen; j++)
       { GETFLIP
@@ -240,8 +241,9 @@ static void Decode_Run(HScheme *neme, HScheme *reme, FILE *in, char *read,
   rlens = reme->codelens;
   rlook = reme->lookup;
 
-  n    = 16;
-  ilen = 0;
+  n     = 16;
+  ilen  = 0;
+  icode = 0;
   if (Flip)
     for (j = 0; j < rlen; j++)
       { GETFLIP
