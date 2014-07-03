@@ -1,27 +1,25 @@
-CFLAGS = -O4 -Wall -Wextra
+CC ?= gcc
 
-all: dextract dexta undexta dexqv undexqv
+CFLAGS ?= -O3 -march=native #Default flags in Release mode
+CFLAGS +=  -Wall -Wextra 
 
-dextract: dextract.c shared.c
-	gcc $(CFLAGS) -o dextract dextract.c -lhdf5
+LDFLAGS += -lhdf5 
+AUTOTARGETS = dextract dexta undexta dexqv 
+TARGETS = $(AUTOTARGETS) undexqv 
 
-dexta: dexta.c shared.c
-	gcc $(CFLAGS) -o dexta dexta.c
+all: $(TARGETS)
 
-undexta: undexta.c shared.c
-	gcc $(CFLAGS) -o undexta undexta.c
+$(AUTOTARGETS): % : %.c
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ 
 
-dexqv: dexqv.c shared.c
-	gcc $(CFLAGS) -o dexqv dexqv.c
-
-undexqv: undexqv.c shared.c
-	gcc $(CFLAGS) -fno-strict-aliasing -o undexqv undexqv.c
+undexqv: undexqv.c 
+	$(CC) $(CFLAGS) -fno-strict-aliasing -o $@ $<
 
 clean:
-	rm -f dextract dexta undexta dexqv undexqv dextract.tar.gz
+	rm -f $(TARGETS) dextract.tar.gz
 
 install:
-	cp dextract dexta undexta dexqv undexqv ~/bin
+	cp $(TARGETS) ~/bin
 
 package:
 	tar -zcf dextract.tar.gz README *.c Makefile
