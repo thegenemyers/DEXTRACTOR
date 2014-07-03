@@ -1,5 +1,8 @@
 CC ?= gcc
-CFLAGS  += -O4 -Wall -Wextra 
+
+CFLAGS ?= -O3 -march=native #Default flags in Release mode
+CFLAGS +=  -Wall -Wextra 
+
 LDFLAGS += -lhdf5 
 AUTOTARGETS = dextract dexta undexta dexqv 
 
