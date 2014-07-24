@@ -14,13 +14,11 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#include "DB.h"
+
+static char *Usage = "[-vk] <path:fasta> ...";
+
 #define MAX_BUFFER 100000
-
-static char *Usage = "[-Sk] <path:fasta> ...";
-
-#define DEXTA
-
-#include "shared.c"
 
 //  Compress read into 2-bits per base (from [0-3] per byte representation
 
@@ -28,31 +26,24 @@ int main(int argc, char *argv[])
 { int     VERBOSE;
   int     KEEP;
 
-  Program_Name = argv[0];
+  { int i, j, k;
+    int flags[128];
 
-  { int   i, j, k;
-
-    VERBOSE = 1;
-    KEEP    = 0;
+    ARG_INIT("dexta")
 
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
-        for (k = 1; argv[i][k] != '\0'; k++)
-          if (argv[i][k] == 'S')
-            VERBOSE = 0;
-          else if (argv[i][k] == 'k')
-            KEEP = 1;
-          else
-            { fprintf(stderr,"%s: -%c is an illegal option\n",Program_Name,argv[i][k]);
-              exit (1);
-            }
+        { ARG_FLAGS("vk") }
       else
         argv[j++] = argv[i];
     argc = j;
 
+    VERBOSE = flags['v'];
+    KEEP    = flags['k'];
+
     if (argc == 1)
-      { fprintf(stderr,"Usage: %s %s\n",Program_Name,Usage);
+      { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
         exit (1);
       }
   }
@@ -64,40 +55,31 @@ int main(int argc, char *argv[])
     int     i;
 
     rmax  = MAX_BUFFER + 30000;
-    read  = (char *) Guarded_Alloc(NULL,rmax+1);
+    read  = (char *) Malloc(rmax+1,"Allocating read buffer");
+    if (read == NULL)
+      exit (1);
+
     for (i = 1; i < argc; i++)
 
-      { FILE   *input, *output;
-        char   *full;
-        int     eof;
+      { char *pwd, *root;
+        FILE *input, *output;
+        int   eof;
 
         // Open fasta file
 
-        { char *path;
-          int   epos;
+        pwd   = PathTo(argv[i]);
+        root  = Root(argv[i],".fasta");
+        input = Fopen(Catenate(pwd,"/",root,".fasta"),"r");
+        if (input == NULL)
+          exit (1);
+        output = Fopen(Catenate(pwd,"/",root,".dexta"),"w");
+        if (output == NULL)
+          exit (1);
 
-          path = argv[i];
-          full = (char *) Guarded_Alloc(NULL,strlen(path)+20);
-          epos = strlen(path);
-          if (epos >= 6 && strcasecmp(path+(epos-6),".fasta") == 0)
-            strcpy(full,path);
-          else
-            { epos += 6;
-              sprintf(full,"%s.fasta",path);
-            }
-
-          input = Guarded_Fopen(full,"r");
-
-          if (VERBOSE)
-            { fprintf(stderr,"Processing '%s' ...",full);
-              fflush(stderr);
-            }
-
-          strcpy(full+(epos-6),".dexta");
-          output = Guarded_Fopen(full,"w");
-
-          strcpy(full+(epos-6),".fasta");
-        }
+        if (VERBOSE)
+          { fprintf(stderr,"Processing '%s' ...",root);
+            fflush(stderr);
+          }
 
         // Read the first header and output the endian key and short name
 
@@ -117,7 +99,7 @@ int main(int argc, char *argv[])
 
           slash = index(read,'/');
           if (slash == NULL)
-            { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Program_Name);
+            { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Prog_Name);
               exit (1);
             }
 
@@ -146,11 +128,11 @@ int main(int argc, char *argv[])
 
               slash = index(read+(rlen+1),'/');
               if (slash == NULL)
-                { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Program_Name);
+                { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Prog_Name);
     		    exit (1);
                 }
               if (sscanf(slash+1,"%d/%d_%d RQ=0.%d\n",&well,&beg,&end,&qv) != 4)
-                { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Program_Name);
+                { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Prog_Name);
                   exit (1);
                 }
 
@@ -173,7 +155,9 @@ int main(int argc, char *argv[])
                   rlen += x;
                   if (rlen + MAX_BUFFER > rmax)
                     { rmax = 1.2 * rmax + 1000 + MAX_BUFFER;
-                      read = (char *) Guarded_Alloc(read,rmax+1);
+                      read = (char *) Realloc(read,rmax+1,"Reallocaing read buffer");
+                      if (read == NULL)
+                        exit (1);
                     }
                 }
               read[rlen] = '\0';
@@ -198,14 +182,16 @@ int main(int argc, char *argv[])
 
               //  Compress read and output
 
+              Number_Read(read);
               Compress_Read(rlen,read);
               fwrite(read,1,COMPRESSED_LEN(rlen),output);
             }
         }
 
         if (!KEEP)
-          unlink(full);
-        free(full);
+          unlink(Catenate(pwd,"/",root,".fasta"));
+        free(root);
+        free(pwd);
 
         if (VERBOSE)
           { fprintf(stderr," Done\n");

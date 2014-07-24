@@ -17,17 +17,19 @@
 #include <string.h>
 #include <strings.h>
 #include <math.h>
+#include <ctype.h>
 #include <sys/stat.h>
 
 #include <hdf5.h>
 
+#include "DB.h"
+
+#define LOWER_OFFSET 32
 #define PHRED_OFFSET 33
 
-static char *Usage = "[-qS] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax_h5> ...";
+static char *Usage = "[-vq] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax_h5> ...";
 
 #define DEXTRACT
-
-#include "shared.c"
 
 // Exception codes
 
@@ -62,7 +64,6 @@ typedef struct
 static void initBaxData(BaxData *b, int fastq, int quivqv)
 { b->fullName  = NULL;
   b->shortName = NULL;
-  b->length    = 0;
   b->fastq     = fastq;
   b->quivqv    = quivqv;
   b->baseCall  = NULL;
@@ -73,39 +74,23 @@ static void initBaxData(BaxData *b, int fastq, int quivqv)
 //  Record the names of the next bax file and reset the memory buffer high-water mark
 
 static void initBaxNames(BaxData *b, char *fname, char *hname)
-{ char *beg, *end;
-
-  beg = strrchr(hname, '/' );
-  if (beg != NULL)
-    beg += 1;
-  else
-    beg = hname;
-  end = strchr(beg,'.');
-  if (end != NULL)
-    *end = '\0';
-
-  free(b->shortName);
-
-  b->fullName  = fname;
-  b->shortName = Guarded_Strdup(beg);
+{ b->fullName  = fname;
+  b->shortName = hname;
   b->length    = 0;
-
-  if (end != NULL)
-    *end = '.';
 }
 
 //  Check if memory needed is above highwater mark, and if so allocate
 
-static void ensureCapacity(BaxData *b, hsize_t length)
+static void ensureCapacity(BaxData *b)
 { static hsize_t smax = 0;
 
-  if (smax < length)
-    { smax = 1.2*length + 10000;
-      b->baseCall = (char *) Guarded_Alloc(b->baseCall, smax);
+  if (smax < b->length)
+    { smax = 1.2*b->length + 10000;
+      b->baseCall = (char *) Realloc(b->baseCall, smax, "Allocating basecall vector");
       if (b->fastq)
-        b->fastQV = (char *) Guarded_Alloc(b->fastQV, smax);
+        b->fastQV = (char *) Realloc(b->fastQV, smax, "Allocating fastq vector");
       if (b->quivqv)
-        { b->delQV   = (char *) Guarded_Alloc(b->delQV, 5ll*smax);
+        { b->delQV   = (char *) Realloc(b->delQV, 5ll*smax, "Allocating QV vector");
           b->delTag  = b->delQV + smax;
           b->insQV   = b->delTag + smax;
           b->mergeQV = b->insQV + smax;
@@ -140,10 +125,14 @@ static hid_t getBaxData(BaxData *b)
       { H5Fclose(file_id);									\
         return (error);										\
       }												\
+    H5Sget_simple_extent_dims(field_space, field_len, NULL);					\
     if (b->length == 0)										\
-      { H5Sget_simple_extent_dims(field_space, field_len, NULL);				\
-        b->length = field_len[0];								\
-        ensureCapacity(b, field_len[0]);							\
+      { b->length = field_len[0];								\
+        ensureCapacity(b);									\
+      }												\
+    else											\
+      { if (b->length != field_len[0])								\
+          return (error);									\
       }												\
     stat = H5Dread(field_set, H5T_NATIVE_UCHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT, b->field);	\
     if (stat < 0)										\
@@ -168,6 +157,9 @@ static hid_t getBaxData(BaxData *b)
 
 // Find the good read invervals of the baxfile b(FileID), output the reads of length >= minLen and
 //   score >= minScore to output (for the fasta or fastq part) and qvquiv (if b->quivqv is set)
+
+static char *fasta_header = ">%s/%d/%d_%d RQ=0.%d\n";
+static char *fastq_header = "@%s/%d/%d_%d RQ=0.%d\n";
 
 static int writeBaxReads(BaxData *b, hid_t FileID,
                          int minLen, int minScore,
@@ -218,9 +210,11 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
         return (BAX_REGION_ERR);
       }
 
-    { int nregions = region_num[0];
-      int region[5*nregions+1];
-      int roff, *hlen, *cur, h;
+    { int   nregions = region_num[0];
+      int   region[5*nregions+1];
+      int   roff, *hlen, *cur, h;
+      int   tolower;
+      char *header;
 
       if (H5Dread(region_set, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, region) < 0)
         { H5Sclose(region_space);
@@ -240,6 +234,12 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
 #define SCORE  4
 
       //  Find the HQV regions and output as reads to the various output options
+
+      tolower = isupper(b->baseCall[0]);
+      if (b->fastq)
+        header = fastq_header;
+      else
+        header = fasta_header;
 
       roff    = 0;
       cur     = region;
@@ -280,13 +280,23 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
                       if (iend - ibeg < minLen)
                         continue;
 
-                      if (b->fastq)
+                      fprintf(output,header,b->shortName,h,ibeg,iend,qv);
+
+                      ibeg += roff;
+                      iend += roff;
+
+                      if (tolower)
                         { int a;
 
-                          fprintf(output,"@%s/%d/%d_%d RQ=0.%d\n",b->shortName,h,ibeg,iend,qv);
+                          for (a = ibeg; a < iend; a++)
+                            b->baseCall[a] += LOWER_OFFSET;
+                          if (b->quivqv)
+                            for (a = ibeg; a < iend; a++)
+                              b->delTag[a] += LOWER_OFFSET;
+                        }
 
-                          ibeg += roff;
-                          iend += roff;
+                      if (b->fastq)
+                        { int a;
 
                           fprintf(output,"%.*s\n", iend-ibeg, b->baseCall + ibeg);
                           fprintf(output,"+\n");
@@ -297,28 +307,18 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
                       else
                         { int a;
 
-                          fprintf(output,">%s/%d/%d_%d RQ=0.%d\n",b->shortName,h,ibeg,iend,qv);
-
-                          ibeg += roff;
-                          iend += roff;
-
-                          for (a = ibeg; a < iend; a += 70)
-                            if (a+70 > iend)
+                          for (a = ibeg; a < iend; a += 80)
+                            if (a+80 > iend)
                               fprintf(output,"%.*s\n", iend-a, b->baseCall + a);
                             else
-                              fprintf(output,"%.70s\n", b->baseCall + a);
+                              fprintf(output,"%.80s\n", b->baseCall + a);
                         }
 
                       if (b->quivqv)
                         { int a;
 
-                          ibeg -= roff;
-                          iend -= roff;
-
-                          fprintf(qvquiv,"@%s/%d/%d_%d RQ=0.%d\n",b->shortName,h,ibeg,iend,qv);
-
-                          ibeg += roff;
-                          iend += roff;
+                          fprintf(qvquiv,"@%s/%d/%d_%d RQ=0.%d\n",
+                                         b->shortName,h,ibeg-roff,iend-roff,qv);
 
                           for (a = ibeg; a < iend; a++)
                             fputc(b->delQV[a]+PHRED_OFFSET,qvquiv);
@@ -394,14 +394,12 @@ static void printBaxError(int errorCode)
 //  Free *the* bax data structure
 
 static void freeBaxData(BaxData *b)
-{ b->length = 0;
-  if (b->baseCall != NULL)
+{ if (b->baseCall != NULL)
     free(b->baseCall);
   if (b->delQV != NULL)
     free(b->delQV);
   if (b->fastQV != NULL)
     free(b->fastQV);
-  free(b->shortName);
 }
 
 
@@ -418,63 +416,36 @@ int main(int argc, char* argv[])
 
   BaxData b;
 
-  FASTQ     = 0;
-  QUIVQV    = 0;
-  VERBOSE   = 1;
-  MIN_LEN   = 500;
-  MIN_SCORE = 750;
-  output    = NULL;
-
-  Program_Name = argv[0];
-
   //  Check that zlib library is present
 
   if ( ! H5Zfilter_avail(H5Z_FILTER_DEFLATE))
-    { fprintf(stderr,"%s: zlib library is not present, check build/installation\n",Program_Name);
+    { fprintf(stderr,"%s: zlib library is not present, check build/installation\n",Prog_Name);
       exit (1);
     }
 
   { int   i, j, k;
+    int   flags[128];
     char *eptr;
+
+    ARG_INIT("dextract")
+
+    MIN_LEN   = 500;
+    MIN_SCORE = 750;
+    QUIVQV    = 0;
+    output    = NULL;
 
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
         switch (argv[i][1])
         { default:
-            for (k = 1; argv[i][k] != '\0'; k++)
-              if (argv[i][k] == 'S')
-                VERBOSE = 0;
-              else if (argv[i][k] == 'q')
-                FASTQ = 1;
-              else
-                { fprintf(stderr,"%s: -%c is an illegal option\n",Program_Name,argv[i][k]);
-                  exit (1);
-                }
+            ARG_FLAGS("qv")
             break;
           case 's':
-            MIN_SCORE = strtol(argv[i]+2,&eptr,10);
-            if (*eptr != '\0' || argv[i][2] == '\0')
-              { fprintf(stderr,"%s: -s argument is not an integer\n",Program_Name);
-                exit (1);
-              }
-            if (MIN_SCORE < 0)
-              { fprintf(stderr,"%s: Subread score must be non-negative (%d)\n",
-                               Program_Name,MIN_SCORE);
-                exit (1);
-              }
+            ARG_NON_NEGATIVE(MIN_SCORE,"Subread score threshold")
             break;
           case 'l':
-            MIN_LEN = strtol(argv[i]+2,&eptr,10);
-            if (*eptr != '\0' || argv[i][2] == '\0')
-              { fprintf(stderr,"%s: -l argument is not an integer\n",Program_Name);
-                exit (1);
-              }
-            if (MIN_LEN < 0)
-              { fprintf(stderr,"%s: Subread length must be non-negative (%d)\n",
-                               Program_Name,MIN_LEN);
-                exit (1);
-              }
+            ARG_NON_NEGATIVE(MIN_LEN,"Minimum length threshold")
             break;
           case 'o':
             QUIVQV = 1;
@@ -485,42 +456,28 @@ int main(int argc, char* argv[])
         argv[j++] = argv[i];
     argc = j;
 
+    VERBOSE = flags['v'];
+    FASTQ   = flags['q'];
+
     if (argc == 1)
-      { fprintf(stderr,"Usage: %s %s\n",Program_Name,Usage);
+      { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
         exit (1);
       }
   }
 
   fileQuiv = NULL;
   if (QUIVQV)
-    { char *name;
-      char *eos;
-
-      if (*output == '\0')
-        { output = Guarded_Strdup(argv[1]);   //  will not be freed, OK as only once
-
-          eos = strrchr(output,'/');
-          if (eos == NULL)
-            eos = output;
-          eos = strchr(eos+1,'.');
-          if (eos != NULL)
-            *eos   = '\0';
-        }
-
-      name = (char *) Guarded_Alloc(NULL,strlen(output) + 20);
-
-      if (FASTQ)
-        sprintf(name,"%s.fastq",output);
+    { if (*output == '\0')
+        output = Root(argv[1],NULL);
       else
-        sprintf(name,"%s.fasta",output);
-      fileOut = Guarded_Fopen(name, "w");
-
-      if (QUIVQV)
-        { sprintf(name,"%s.quiva",output);
-          fileQuiv = Guarded_Fopen(name, "w");
-        }
-
-      free(name);
+        output = Strdup(output,"Allocating output file root");
+      if (FASTQ)
+        fileOut = Fopen(Catenate("","",output,".fastq"), "w");
+      else
+        fileOut = Fopen(Catenate("","",output,".fasta"), "w");
+      fileQuiv = Fopen(Catenate("","",output,".quiva"), "w");
+      if (fileOut == NULL || fileQuiv == NULL)
+        exit (1);
     }
   else
     fileOut = stdout;
@@ -535,38 +492,35 @@ int main(int argc, char* argv[])
   { int i;
 
     for (i = 1; i < argc; i++)
-      { char *full;
+      { char *root, *full, *input;
         hid_t fileID;
         int   ecode;
 
-        { int   epos;
-          char *input;
+        { char *pwd;
+          FILE *in;
 
-          input = argv[i];
-          full = (char *) Guarded_Alloc(NULL,strlen(input) + 20);
-          epos = strlen(input);
-          if (epos >= 7 && strcasecmp(input+(epos-7),".bax.h5") == 0)
-            strcpy(full,input);
-          else
-            { FILE *in;
+          pwd   = PathTo(argv[i]);
+          root  = Root(argv[i],".bax.h5");
+          full  = Strdup(Catenate(pwd,"/",root,".bax.h5"),"Allocating full name");
+          input = Root(argv[i],NULL);
+          
+          free(pwd);
 
-              sprintf(full,"%s.bax.h5",input);
-              if ((in = fopen(full,"r")) == NULL)
-                { fprintf(stderr,"%s: Cannot find %s !\n",Program_Name,input);
-                  exit (1);
-                }
-              else
-                fclose(in);
+          if ((in = fopen(full,"r")) == NULL)
+            { fprintf(stderr,"%s: Cannot find %s !\n",Prog_Name,input);
+              exit (1);
             }
-
-          if (QUIVQV)
-            initBaxNames(&b,full,output);
           else
-            initBaxNames(&b,full,input);
-        }
+            fclose(in);
+	}
+
+        if (QUIVQV)
+          initBaxNames(&b,full,output);
+        else
+          initBaxNames(&b,full,input);
 
         if (VERBOSE)
-          { fprintf(stderr, "Fetching file : %s ...", full); fflush(stderr); }
+          { fprintf(stderr, "Fetching file : %s ...", root); fflush(stderr); }
         ecode = fileID = getBaxData(&b);
 
         if (ecode > 0)
@@ -581,13 +535,17 @@ int main(int argc, char* argv[])
           { if (VERBOSE)
               fprintf(stderr, " Skipping due to failure\n"); 
             else
-              fprintf(stderr, " Skipping %s due to failure\n",full); 
+              fprintf(stderr, " Skipping %s due to failure\n",root); 
             printBaxError(ecode);
           }
         else
           { if (VERBOSE)
               { fprintf(stderr, " Done\n"); fflush(stdout); }
           }
+
+        free(root);
+        free(full);
+        free(input);
       }
   }
 
@@ -596,6 +554,8 @@ int main(int argc, char* argv[])
     fclose(fileOut);
   if (fileQuiv != NULL)
     fclose(fileQuiv);
+  if (QUIVQV)
+    free(output);
 
   exit (0);
 }

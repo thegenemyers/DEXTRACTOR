@@ -4,7 +4,6 @@
  *
  *  Author:  Gene Myers
  *  Date  :  January 12, 2014
- *
  ********************************************************************************************/
 
 #include <stdlib.h>
@@ -14,23 +13,43 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#include "DB.h"
+
+static char *Usage = "[-vk] <path:dexta> ...";
+
 #define MAX_BUFFER 100000
 
-static char *Usage = "[-Sk] <path:dexta> ...";
+//  Uncompress read from 2-bits per base into [0-3] per byte representation
 
-#define UNDEXTA
+static void flip_long(void *w)
+{ uint8 *v = (uint8 *) w;
+  uint8  x;
 
-#include "shared.c"
+  x    = v[0];
+  v[0] = v[3];
+  v[3] = x;
+  x    = v[1];
+  v[1] = v[2];
+  v[2] = x;
+}
 
-//  Uncompress read form 2-bits per base into [0-3] per byte representation
+static void flip_short(void *w)
+{ uint8 *v = (uint8 *) w;
+  uint8  x;
+
+  x    = v[0];
+  v[0] = v[1];
+  v[1] = x;
+}
 
 int main(int argc, char *argv[])
 { int     VERBOSE;
   int     KEEP;
 
-  Program_Name = argv[0];
+  { int i, j, k;
+    int flags[128];
 
-  { int   i, j, k;
+    ARG_INIT("undexta")
 
     VERBOSE = 1;
     KEEP    = 0;
@@ -38,21 +57,16 @@ int main(int argc, char *argv[])
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
-        for (k = 1; argv[i][k] != '\0'; k++)
-          if (argv[i][k] == 'S')
-            VERBOSE = 0;
-          else if (argv[i][k] == 'k')
-            KEEP = 1;
-          else
-            { fprintf(stderr,"%s: -%c is an illegal option\n",Program_Name,argv[i][k]);
-              exit (1);
-            }
+        { ARG_FLAGS("vk") }
       else
         argv[j++] = argv[i];
     argc = j;
 
+    VERBOSE = flags['v'];
+    KEEP    = flags['k'];
+
     if (argc == 1)
-      { fprintf(stderr,"Usage: %s %s\n",Program_Name,Usage);
+      { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
         exit (1);
       }
   }
@@ -64,38 +78,26 @@ int main(int argc, char *argv[])
     int     i;
 
     rmax  = MAX_BUFFER + 30000;
-    read  = (char *) Guarded_Alloc(NULL,rmax+1);
+    read  = (char *) Malloc(rmax+1,"Allocating read buffer");
     for (i = 1; i < argc; i++)
-      { FILE   *input, *output;
-        char   *full;
+      { char *pwd, *root;
+        FILE *input, *output;
 
         // Open dexta file
 
-        { char *path;
-          int   epos;
+        pwd   = PathTo(argv[i]);
+        root  = Root(argv[i],".fasta");
+        input = Fopen(Catenate(pwd,"/",root,".dexta"),"r");
+        if (input == NULL)
+          exit (1);
+        output = Fopen(Catenate(pwd,"/",root,".fasta"),"w");
+        if (output == NULL)
+          exit (1);
 
-          path = argv[i];
-          full = (char *) Guarded_Alloc(NULL,strlen(path)+20);
-          epos = strlen(path);
-          if (epos >= 6 && strcasecmp(path+(epos-6),".dexta") == 0)
-            strcpy(full,path);
-          else
-            { epos += 6;
-              sprintf(full,"%s.dexta",path);
-            }
-
-          input = Guarded_Fopen(full,"r");
-
-          if (VERBOSE)
-            { fprintf(stderr,"Processing '%s' ...",full);
-              fflush(stderr);
-            }
-
-          strcpy(full+(epos-6),".fasta");
-          output = Guarded_Fopen(full,"w");
-
-          strcpy(full+(epos-6),".dexta");
-        }
+        if (VERBOSE)
+          { fprintf(stderr,"Processing '%s' ...",root);
+            fflush(stderr);
+          }
 
         { char *name;
           int   well, flip;
@@ -109,7 +111,7 @@ int main(int argc, char *argv[])
 
             fread(&well,sizeof(int),1,input);
             if (flip) flip_long(&well);
-            name = (char *) Guarded_Alloc(NULL,well+1);
+            name = (char *) Malloc(well+1,"Allocating header prefix");
             fread(name,1,well,input);
             name[well] = '\0';
           }
@@ -154,29 +156,31 @@ int main(int argc, char *argv[])
               fprintf(output,"%s/%d/%d_%d RQ=0.%d\n",name,well,beg,end,qv);
 
               //  Read compressed sequence (into buffer big enough for uncompressed sequence)
-              //  Uncompress and output 70 symbols to a line
+              //  Uncompress and output 80 symbols to a line
 
               rlen = end-beg;
               if (rlen > rmax)
                 { rmax = 1.2 * rmax + 1000 + MAX_BUFFER;
-                  read = (char *) Guarded_Alloc(read,rmax+1);
+                  read = (char *) Realloc(read,rmax+1,"Allocating read buffer");
                 }
               fread(read,1,COMPRESSED_LEN(rlen),input);
               Uncompress_Read(rlen,read);
+              Lower_Read(read);
 
-              for (i = 0; i < rlen; i += 70)
-                if (i+70 > rlen)
+              for (i = 0; i < rlen; i += 80)
+                if (i+80 > rlen)
                   fprintf(output,"%.*s\n", rlen-i, read+i);
                 else
-                  fprintf(output,"%.70s\n", read+i);
+                  fprintf(output,"%.80s\n", read+i);
             }
 
           free(name);
         }
 
         if (!KEEP)
-          unlink(full);
-        free(full);
+          unlink(Catenate(pwd,"/",root,".dexta"));
+        free(root);
+        free(pwd);
 
         if (VERBOSE)
           { fprintf(stderr," Done\n");

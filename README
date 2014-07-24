@@ -21,7 +21,7 @@ be consulted again (we expect never unless the spooled up data is compromised or
 in some way).  The compressor/decompressor pairs are endian-aware so moving compressed
 files between machines is possible.
 
-1. dextract  [-qS] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax.h5> ...
+1. dextract  [-vq] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax.h5> ...
 
     The dextract'or takes some number of .bax.h5 files as input and:
 
@@ -42,36 +42,36 @@ files between machines is possible.
            .fasta file of the sequence of each read is written to the standard output.
            Otherwise a .fastq file is written to the standard output.
 
-    If the -S option is set then the program runs silently, otherwise it indicates the
-    processing of each .bax.h5 file.  The parameter -l determines the shortest read
+    If the -v option is set then the program reports the processing of each .bax.h5
+    file, otherwise it runs silently.  The parameter -l determines the shortest read
     length to be extracted (default 500) and the -s parameter determines the minimum
     quality/score of reads to be extracted (default 750 = 75%).
 
-2. dexta   [-Sk] <path:fasta> ...
-   undexta [-Sk] <path:dexta> ...
+2. dexta   [-vk] <path:fasta> ...
+   undexta [-vk] <path:dexta> ...
 
     Dexta compresses a set of .fasta files (produced by either Pacbio's software or
     dextract) and replaces them with new files with a .dexta extension.  That is,
     submitting xxx.fasta will result in a compressed image xxx.dexta, and xxx.fasta
-    will no longer exist.  With the -k option the .fasta source is *not* removed, and
-    with -S set, the program runs completely silently (good for batch jobs to an HPC
-    cluster).  The compression factor is always slightly better than 4.0.  Undexta
-    reverses the compression of dexta, replacing the uncompressed image of xxx.dexta
-    with xxx.fasta.
+    will no longer exist.  With the -k option the .fasta source is *not* removed.  If
+    -v is set, thedn program reports its progress on each file.  Otherwise it runs
+    completely silently (good for batch jobs to an HPC cluster).  The compression
+    factor is always slightly better than 4.0.  Undexta reverses the compression of
+    dexta, replacing the uncompressed image of xxx.dexta with xxx.fasta.
 
-3. dexqv   [-Skl] <path:quiva> ...
-   undexqv [-Sk]  <path:dexqv> ...
+3. dexqv   [-vkl] <path:quiva> ...
+   undexqv [-vk]  <path:dexqv> ...
 
     Dexqv compresses a set of .quiva files (produced by dextract) into new files with a
     .dexqv extension.  That is, submitting xxx.quiva will result in a compressed image
     xxx.dexqv, and xxx.quiva will not longer exist.  The -k flag prevents the removal
-    of xxx.quiva and the -S option makes dexqv completely silent.  If slightly more
-    compression is desired at the expense of being a bit "lossy" then set the -l
-    option.  This option is experimental in that it remains to be seen if Quiver gives
-    the same results with the scaled values responsible for the loss.  Undexqv reverses
-    the compression of dexqv, replacing the uncompressed image of xxx.dexqv with
-    xxx.quiva.  The flags are analgous to the S and k flags for dexqv.  The compression
-    factor is typically 3.4 or so (4.0 or so with -l set).
+    of xxx.quiva.   With -v set provress is reported, otherwise the command runs
+    silently.  If slightly more compression is desired at the expense of being a bit
+    "lossy" then set the -l option.  This option is experimental in that it remains to
+    be seen if Quiver gives the same results with the scaled values responsible for the
+    loss.  Undexqv reverses the compression of dexqv, replacing the uncompressed image
+    of xxx.dexqv with xxx.quiva.  The flags are analgous to the v & k flags for dexqv.
+    The compression factor is typically 3.4 or so (4.0 or so with -l set).
 
   To compile the programs you must have the HDF5 library installed on your system and
 the library and include files for said must be on the appropriate search paths.  The
