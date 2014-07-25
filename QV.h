@@ -33,10 +33,9 @@ typedef struct
 int       Read_Lines(FILE *input, int nlines);
 char     *QVentry();
 
-  // Read the .quiva file on input and record frequency statistics.  If zero is set then
-  //   restart statistics gathering, otherwise accumulate statisttics.
+  // Read the .quiva file on input and record frequency statistics.
 
-uint64    QVcoding_Scan(FILE *input, int zero);
+void     QVcoding_Scan(FILE *input);
 
   // Given QVcoding_Scan has been called at least once, create an encoding scheme based on
   //   the accumulated statistics and return a pointer to it.  The returned encoding object

@@ -826,24 +826,22 @@ static int      delChar, subChar;
 
   // Referred by:  QVcoding_Scan, Create_QVcoding
 
-uint64 QVcoding_Scan(FILE *input, int zero)
+void QVcoding_Scan(FILE *input)
 { char *slash;
   int   rlen;
 
-  //  Zero histograms if starting over
+  //  Zero histograms
 
-  if (zero)
-    { bzero(delHist,sizeof(uint64)*256);
-      bzero(delRun,sizeof(uint64)*256);
-      bzero(mrgHist,sizeof(uint64)*256);
-      bzero(insHist,sizeof(uint64)*256);
-      bzero(subHist,sizeof(uint64)*256);
-      bzero(subRun,sizeof(uint64)*256);
+  bzero(delHist,sizeof(uint64)*256);
+  bzero(delRun,sizeof(uint64)*256);
+  bzero(mrgHist,sizeof(uint64)*256);
+  bzero(insHist,sizeof(uint64)*256);
+  bzero(subHist,sizeof(uint64)*256);
+  bzero(subRun,sizeof(uint64)*256);
 
-      totChar    = 0;
-      delChar    = -1;
-      subChar    = -1;
-    }
+  totChar    = 0;
+  delChar    = -1;
+  subChar    = -1;
 
   //  Make a sweep through the .quiva entries, histogramming the relevant things
   //    and figuring out the run chars for the deletion and substition streams
@@ -902,15 +900,13 @@ uint64 QVcoding_Scan(FILE *input, int zero)
 
               subChar = 0;
               for (k = 1; k < 256; k++)
-                if (subHist[k] > subHist[delChar])
+                if (subHist[k] > subHist[subChar])
                   subChar = k;
             }
         }
       if (subChar >= 0)
         Histogram_Runs( subRun,(uint8 *) (Read+4*Rmax),rlen,subChar);
     }
-
-  return (totChar);
 }
 
   //   Using the statistics in the global stat tables, create the Huffman schemes and write
