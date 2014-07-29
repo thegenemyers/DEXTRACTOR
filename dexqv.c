@@ -16,7 +16,7 @@
 #include <math.h>
 #include <unistd.h>
 
-#include "QV.h"
+#include "DB.h"
 
 static char *Usage = "[-vkl] <path:quiva> ...";
 

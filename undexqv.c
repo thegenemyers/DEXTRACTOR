@@ -13,7 +13,7 @@
 #include <math.h>
 #include <unistd.h>
 
-#include "QV.h"
+#include "DB.h"
 
 static char *Usage = "[-vk] <path:dexqv> ...";
 
@@ -54,8 +54,10 @@ int main(int argc, char* argv[])
 
   //  For each .dexqv file to be decompressed
 
-  { int     i;
-
+  { int   i;
+    char *entry[5] = { NULL, NULL, NULL, NULL, NULL };
+    int   emax     = -1;
+    
     for (i = 1; i < argc; i++)
       { char     *pwd, *root;
         FILE     *input, *output;
@@ -87,9 +89,10 @@ int main(int argc, char* argv[])
 
           well = 0;
           while (1)
-            { int    beg, end, qv;
+            { int    beg, end, qv, rlen;
               uint16 half;
               uint8  byte;
+              int    e;
 
               //  Decode the compressed header and write it out
 
@@ -124,7 +127,20 @@ int main(int argc, char* argv[])
 
               //  Decode the QV entry and write it out
 
-              Uncompress_Next_QVentry(input,output,coding,end-beg);
+              rlen = end-beg;
+              if (rlen > emax)
+                { emax = 1.2*rlen + 1000;
+                  entry[0] = (char *) Realloc(entry[0],5*emax,"Reallocating QV entry buffer");
+                  if (entry[0] == NULL)
+                    exit (1);
+                  for (e = 1; e < 5; e++)
+                    entry[e] = entry[e-1] + emax;
+                }
+
+              Uncompress_Next_QVentry(input,entry,coding,rlen);
+
+              for (e = 0; e < 5; e++)
+                fprintf(output,"%.*s\n",rlen,entry[e]);
             }
 	}
 

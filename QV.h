@@ -1,17 +1,19 @@
-/********************************************************************************************
+/*******************************************************************************************
  *
- *  Recreate all the .fasta files that have been loaded into a specified database.
+ *  Compressor/decompressor for .quiv files: customized Huffman codes for each stream based on
+ *    the histogram of values occuring in a given file.  The two low complexity streams
+ *    (deletionQV and substitutionQV) use a Huffman coding of the run length of the prevelant
+ *    character.
  *
- *  Author:  Gene Myers
- *  Date  :  May 2014
+ *  Author:   Gene Myers
+ *  Date:     Jan 18, 2014
+ *  Modified: July 25, 2014
  *
  ********************************************************************************************/
 
 #ifndef _QV_COMPRESSOR
 
 #define _QV_COMPRESSOR
-
-#include "DB.h"
 
   //  A PacBio compression scheme
 
@@ -62,9 +64,10 @@ void      Compress_Next_QVentry(FILE *input, FILE *output, QVcoding *coding, int
 
   //  Assuming the input is position just beyond the compressed encoding of an entry header,
   //    read the set of compressed encodings for the ensuing 5 QV vectors, decompress them,
-  //    and write their decompressed values to output.  The parameter rlen computed from the
-  //    preceeding header line, critically provides the length of each of the 5 vectors.
+  //    and place their decompressed values into entry which is a 5 element array of character
+  //    pointers.  The parameter rlen computed from the preceeding header line, critically
+  //    provides the length of each of the 5 vectors.
 
-void      Uncompress_Next_QVentry(FILE *input, FILE *output, QVcoding *coding, int rlen);
+void      Uncompress_Next_QVentry(FILE *input, char **entry, QVcoding *coding, int rlen);
 
 #endif // _QV_COMPRESSOR

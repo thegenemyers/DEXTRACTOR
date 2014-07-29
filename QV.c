@@ -1,12 +1,13 @@
 /*******************************************************************************************
  *
- *  Compressor for .quiv files, customized Huffman codes for each stream based on the
- *    histogram of values occuring in the given file.  The two low complexity streams
+ *  Compressor/decompressor for .quiv files: customized Huffman codes for each stream based on
+ *    the histogram of values occuring in a given file.  The two low complexity streams
  *    (deletionQV and substitutionQV) use a Huffman coding of the run length of the prevelant
  *    character.
  *
- *  Author:  Gene Myers
- *  Date:    Jan 18, 2014
+ *  Author:   Gene Myers
+ *  Date:     Jan 18, 2014
+ *  Modified: July 25, 2014
  *
  ********************************************************************************************/
 
@@ -16,7 +17,7 @@
 #include <math.h>
 #include <unistd.h>
 
-#include "QV.h"
+#include "DB.h"
 
 #undef DEBUG
 
@@ -886,7 +887,7 @@ void QVcoding_Scan(FILE *input)
           char *del = Read+Rmax;
 
           for (k = 0; k < rlen; k++)
-            if (del[k] == 'n')
+            if (del[k] == 'n' || del[k] == 'N')
               { delChar = Read[k];
                 break;
               }
@@ -1190,53 +1191,38 @@ void Compress_Next_QVentry(FILE *input, FILE *output, QVcoding *coding, int loss
                (uint8 *) (Read+4*Rmax), rlen, coding->subChar);
 }
 
-void Uncompress_Next_QVentry(FILE *input, FILE *output, QVcoding *coding, int rlen)
+void Uncompress_Next_QVentry(FILE *input, char **entry, QVcoding *coding, int rlen)
 { int clen;
-
-  //  Make sure read buffer is big enough for the uncompressed streams
-
-  if (rlen > Rmax)
-    { Rmax = 1.2 * rlen + 1000;
-      Read = (char *) Realloc(Read,5*Rmax,"Reallocating QV entry buffer");
-    }
 
   //  Decode each stream and write to output
 
   if (coding->delChar < 0)
-    { Decode(coding->delScheme, input, Read, rlen);
+    { Decode(coding->delScheme, input, entry[0], rlen);
       clen = rlen;
 
-      fprintf(output,"%.*s\n",rlen,Read);
-      fread(Read+Rmax,1,COMPRESSED_LEN(clen),input);
-      Uncompress_Read(clen,Read+Rmax);
-      Lower_Read(Read+Rmax);
-
-      fprintf(output,"%.*s\n",rlen,Read+Rmax);
+      fread(entry[1],1,COMPRESSED_LEN(clen),input);
+      Uncompress_Read(clen,entry[1]);
+      Lower_Read(entry[1]);
     }
   else
     { Decode_Run(coding->delScheme, coding->dRunScheme, input,
-                 Read, rlen, coding->delChar);
-      clen = Packed_Length(Read,rlen,coding->delChar);
+                 entry[0], rlen, coding->delChar);
+      clen = Packed_Length(entry[0],rlen,coding->delChar);
 
-      fprintf(output,"%.*s\n",rlen,Read);
-      fread(Read+Rmax,1,COMPRESSED_LEN(clen),input);
-      Uncompress_Read(clen,Read+Rmax);
-      Lower_Read(Read+Rmax);
+      fread(entry[1],1,COMPRESSED_LEN(clen),input);
+      Uncompress_Read(clen,entry[1]);
+      Lower_Read(entry[1]);
 
-      Unpack_Tag(Read+Rmax,clen,Read,rlen,coding->delChar);
-      fprintf(output,"%.*s\n",rlen,Read+Rmax);
+      Unpack_Tag(entry[1],clen,entry[0],rlen,coding->delChar);
     }
 
-  Decode(coding->insScheme, input, Read, rlen);
-  fprintf(output,"%.*s\n",rlen,Read);
+  Decode(coding->insScheme, input, entry[2], rlen);
 
-  Decode(coding->mrgScheme, input, Read, rlen);
-  fprintf(output,"%.*s\n",rlen,Read);
+  Decode(coding->mrgScheme, input, entry[3], rlen);
 
   if (coding->subChar < 0)
-    Decode(coding->subScheme, input, Read, rlen);
+    Decode(coding->subScheme, input, entry[4], rlen);
   else
     Decode_Run(coding->subScheme, coding->sRunScheme, input,
-               Read, rlen, coding->subChar);
-  fprintf(output,"%.*s\n",rlen,Read);
+               entry[4], rlen, coding->subChar);
 }
