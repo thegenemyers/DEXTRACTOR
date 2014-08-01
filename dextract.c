@@ -1,3 +1,40 @@
+/************************************************************************************\
+*                                                                                    *
+* Copyright (c) 2014, Dr. Eugene W. Myers (EWM). All rights reserved.                *
+*                                                                                    *
+* Redistribution and use in source and binary forms, with or without modification,   *
+* are permitted provided that the following conditions are met:                      *
+*                                                                                    *
+*  · Redistributions of source code must retain the above copyright notice, this     *
+*    list of conditions and the following disclaimer.                                *
+*                                                                                    *
+*  · Redistributions in binary form must reproduce the above copyright notice, this  *
+*    list of conditions and the following disclaimer in the documentation and/or     *
+*    other materials provided with the distribution.                                 *
+*                                                                                    *
+*  · The name of EWM may not be used to endorse or promote products derived from     *
+*    this software without specific prior written permission.                        *
+*                                                                                    *
+* THIS SOFTWARE IS PROVIDED BY EWM ”AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES,    *
+* INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND       *
+* FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL EWM BE LIABLE   *
+* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES *
+* (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS  *
+* OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY      *
+* THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING     *
+* NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN  *
+* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.                                      *
+*                                                                                    *
+* For any issues regarding this software and its use, contact EWM at:                *
+*                                                                                    *
+*   Eugene W. Myers Jr.                                                              *
+*   Bautzner Str. 122e                                                               *
+*   01099 Dresden                                                                    *
+*   GERMANY                                                                          *
+*   Email: gene.myers@gmail.com                                                      *
+*                                                                                    *
+\************************************************************************************/
+
 /*******************************************************************************************
  *
  *  Dextractor: pullls requested info out of .bax.h5 files produced by Pacbio
@@ -33,23 +70,25 @@ static char *Usage = "[-vq] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:ba
 
 // Exception codes
 
-#define CANNOT_OPEN_BAX_FILE   -1
-#define BAX_BASECALL_ERR       -2
-#define BAX_DELETIONQV_ERR     -3
-#define BAX_DELETIONTAG_ERR    -4
-#define BAX_INSERTIONQV_ERR    -5
-#define BAX_MERGEQV_ERR        -6
-#define BAX_SUBSTITUTIONQV_ERR -7
-#define BAX_QV_ERR             -8
-#define BAX_NR_EVENTS_ERR      -9
-#define BAX_REGION_ERR        -10
+#define CANNOT_OPEN_BAX_FILE   1
+#define BAX_BASECALL_ERR       2
+#define BAX_DEL_ERR            3
+#define BAX_TAG_ERR            4
+#define BAX_INS_ERR            5
+#define BAX_MRG_ERR            6
+#define BAX_SUB_ERR            7
+#define BAX_QV_ERR             8
+#define BAX_NR_EVENTS_ERR      9
+#define BAX_REGION_ERR        10
+#define BAX_HOLESTATUS_ERR    11
 
 typedef struct
   { char   *fullName;      // full file path
     char   *shortName;     // without path and file extension (used in header line)
-    hsize_t length;        // sum of all raw read lengths
     int     fastq;         // if non-zero produce a fastq file instead of a fasta file
     int     quivqv;        // if non-zero produce a quiv file
+
+    hsize_t numBP;         // sum of all raw read lengths
     char   *baseCall;      // 7 streams that may be extracted dependent on flag settings
     char   *delQV;
     char   *delTag;
@@ -57,6 +96,14 @@ typedef struct
     char   *mergeQV;
     char   *subQV;
     char   *fastQV;
+
+    hsize_t numZMW;        // number of wells/holes
+    int    *readLen;       // length of each read in events
+    char   *holeType;      // Hole type, only SEQUENCING holes are extracted
+
+    hsize_t numHQR;        // number of regions
+    int    *regions;       // region information (5 ints per entry)
+
   } BaxData;
 
 //  Initialize *the* BaxData structure
@@ -69,6 +116,9 @@ static void initBaxData(BaxData *b, int fastq, int quivqv)
   b->baseCall  = NULL;
   b->delQV     = NULL;
   b->fastQV    = NULL;
+  b->readLen   = NULL;
+  b->holeType  = NULL;
+  b->regions   = NULL;
 }
 
 //  Record the names of the next bax file and reset the memory buffer high-water mark
@@ -76,37 +126,62 @@ static void initBaxData(BaxData *b, int fastq, int quivqv)
 static void initBaxNames(BaxData *b, char *fname, char *hname)
 { b->fullName  = fname;
   b->shortName = hname;
-  b->length    = 0;
+  b->numBP     = 0;
+  b->numZMW    = 0;
+  b->numHQR    = 0;
 }
 
 //  Check if memory needed is above highwater mark, and if so allocate
 
-static void ensureCapacity(BaxData *b)
+static void ensureBases(BaxData *b, hsize_t len)
 { static hsize_t smax = 0;
 
-  if (smax < b->length)
-    { smax = 1.2*b->length + 10000;
+  b->numBP = len;
+  if (smax < len)
+    { smax = 1.2*len + 10000;
       b->baseCall = (char *) Realloc(b->baseCall, smax, "Allocating basecall vector");
       if (b->fastq)
         b->fastQV = (char *) Realloc(b->fastQV, smax, "Allocating fastq vector");
       if (b->quivqv)
-        { b->delQV   = (char *) Realloc(b->delQV, 5ll*smax, "Allocating QV vector");
-          b->delTag  = b->delQV + smax;
-          b->insQV   = b->delTag + smax;
-          b->mergeQV = b->insQV + smax;
+        { b->delQV   = (char *) Realloc(b->delQV, 5ll*smax, "Allocating 5 QV vectors");
+          b->delTag  = b->delQV   + smax;
+          b->insQV   = b->delTag  + smax;
+          b->mergeQV = b->insQV   + smax;
           b->subQV   = b->mergeQV + smax;
         }
     }
 }
 
+static void ensureZMW(BaxData *b, hsize_t len)
+{ static hsize_t smax = 0;
+
+  b->numZMW = len;
+  if (smax < len)
+    { smax = 1.2*len + 10000;
+      b->holeType = (char *) Realloc(b->holeType, smax, "Allocating hole vector");
+      b->readLen  = (int *) Realloc(b->readLen , smax * sizeof(int), "Allocating event vector");
+    }
+}
+
+static void ensureHQR(BaxData *b, hsize_t len)
+{ static hsize_t smax = 0;
+
+  b->numHQR = len;
+  if (smax < len)
+    { smax = 1.2*len + 10000;
+      b->regions = (int *) Realloc(b->regions, (5ll*smax+1)*sizeof(int), "Allocating region vector");
+    }
+}
+
 // Fetch the relevant contents of the current bax.h5 file and return the H5 file id.
 
-static hid_t getBaxData(BaxData *b)
+static int getBaxData(BaxData *b)
 { hid_t   field_space;
   hid_t   field_set;
-  hsize_t field_len[1];
+  hsize_t field_len[2];
   hid_t   file_id;
   herr_t  stat;
+  int     ecode;
 
   H5Eset_auto(H5E_DEFAULT,0,0); // silence hdf5 error stack
 
@@ -118,41 +193,57 @@ static hid_t getBaxData(BaxData *b)
   printf("PROCESSING %s, file_id: %d\n", baxFileName, file_id);
 #endif
 
-#define FETCH(field,path,error)									\
-  { field_set   = H5Dopen2(file_id, path, H5P_DEFAULT);						\
-    field_space = H5Dget_space(field_set);							\
-    if (field_set < 0 || field_space < 0)							\
-      { H5Fclose(file_id);									\
-        return (error);										\
-      }												\
+#define GET_SIZE(path,error)									\
+  { ecode = error;										\
+    if ((field_set = H5Dopen2(file_id, path, H5P_DEFAULT)) < 0) goto exit0;			\
+    if ((field_space = H5Dget_space(field_set)) < 0) goto exit1;				\
     H5Sget_simple_extent_dims(field_space, field_len, NULL);					\
-    if (b->length == 0)										\
-      { b->length = field_len[0];								\
-        ensureCapacity(b);									\
-      }												\
-    else											\
-      { if (b->length != field_len[0])								\
-          return (error);									\
-      }												\
-    stat = H5Dread(field_set, H5T_NATIVE_UCHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT, b->field);	\
-    if (stat < 0)										\
-      return (error);										\
-    H5Sclose(field_space);									\
-    H5Dclose(field_set);									\
   }
 
-  FETCH(baseCall,"/PulseData/BaseCalls/Basecall",BAX_BASECALL_ERR)
+#define FETCH(field,type)									\
+  { stat = H5Dread(field_set, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, b->field);			\
+    H5Sclose(field_space);									\
+    H5Dclose(field_set);									\
+    if (stat < 0) goto exit0;									\
+  }
+
+#define CHECK_FETCH(path,error,field,type,cntr)							\
+  { GET_SIZE(path,error)									\
+    if (b->cntr != field_len[0]) goto exit2;							\
+    FETCH(field,type)										\
+  }
+
+  GET_SIZE("/PulseData/BaseCalls/Basecall",BAX_BASECALL_ERR)
+  ensureBases(b,field_len[0]);
+  FETCH(baseCall,H5T_NATIVE_UCHAR)
   if (b->fastq)
-    FETCH(fastQV,"/PulseData/BaseCalls/QualityValue",BAX_QV_ERR)
+    CHECK_FETCH("/PulseData/BaseCalls/QualityValue",BAX_QV_ERR,fastQV,H5T_NATIVE_UCHAR,numBP)
   if (b->quivqv)
-    { FETCH(delQV,"/PulseData/BaseCalls/DeletionQV",BAX_DELETIONQV_ERR)
-      FETCH(delTag,"/PulseData/BaseCalls/DeletionTag",BAX_DELETIONTAG_ERR)
-      FETCH(insQV,"/PulseData/BaseCalls/InsertionQV",BAX_INSERTIONQV_ERR)
-      FETCH(mergeQV,"/PulseData/BaseCalls/MergeQV",BAX_MERGEQV_ERR)
-      FETCH(subQV,"/PulseData/BaseCalls/SubstitutionQV",BAX_SUBSTITUTIONQV_ERR)
+    { CHECK_FETCH("/PulseData/BaseCalls/DeletionQV",    BAX_DEL_ERR,delQV,  H5T_NATIVE_UCHAR,numBP)
+      CHECK_FETCH("/PulseData/BaseCalls/DeletionTag",   BAX_TAG_ERR,delTag, H5T_NATIVE_UCHAR,numBP)
+      CHECK_FETCH("/PulseData/BaseCalls/InsertionQV",   BAX_INS_ERR,insQV,  H5T_NATIVE_UCHAR,numBP)
+      CHECK_FETCH("/PulseData/BaseCalls/MergeQV",       BAX_MRG_ERR,mergeQV,H5T_NATIVE_UCHAR,numBP)
+      CHECK_FETCH("/PulseData/BaseCalls/SubstitutionQV",BAX_SUB_ERR,subQV,  H5T_NATIVE_UCHAR,numBP)
     }
 
-  return (file_id);
+  GET_SIZE("/PulseData/BaseCalls/ZMW/HoleStatus",BAX_HOLESTATUS_ERR)
+  ensureZMW(b,field_len[0]);
+  FETCH(holeType,H5T_NATIVE_UCHAR)
+  CHECK_FETCH("/PulseData/BaseCalls/ZMW/NumEvent",BAX_NR_EVENTS_ERR,readLen,H5T_NATIVE_INT,numZMW)
+
+  GET_SIZE("/PulseData/Regions",BAX_REGION_ERR)
+  ensureHQR(b,field_len[0]);
+  FETCH(regions,H5T_NATIVE_INT)
+
+  return (0);
+
+exit2:
+  H5Sclose(field_space);
+exit1:
+  H5Dclose(field_set);
+exit0:
+  H5Fclose(file_id);
+  return (ecode);
 }
 
 // Find the good read invervals of the baxfile b(FileID), output the reads of length >= minLen and
@@ -161,68 +252,15 @@ static hid_t getBaxData(BaxData *b)
 static char *fasta_header = ">%s/%d/%d_%d RQ=0.%d\n";
 static char *fastq_header = "@%s/%d/%d_%d RQ=0.%d\n";
 
-static int writeBaxReads(BaxData *b, hid_t FileID,
-                         int minLen, int minScore,
-                         FILE *output, FILE* qvquiv)
-{ hid_t   read_set, read_space;
-  hid_t   region_set, region_space;
-  hsize_t read_num[1],  region_num[2];
+static void writeBaxReads(BaxData *b, int minLen, int minScore, FILE *output, FILE* qvquiv)
+{ int   nreads, *rlen;
+  int   roff, *hlen, *cur, h, w;
+  int   tolower;
+  char *header;
 
 #if DEBUG
   printf("printSubreadFields\n");
 #endif
-
-  if(FileID < 0)
-    return (CANNOT_OPEN_BAX_FILE);
-
-  // Get read lengths out of the bax file
-
-  read_set   = H5Dopen2(FileID, "/PulseData/BaseCalls/ZMW/NumEvent", H5P_DEFAULT);
-  read_space = H5Dget_space(read_set);
-  if (read_space < 0 || read_set < 0)
-    return (BAX_NR_EVENTS_ERR);
-  if (H5Sget_simple_extent_dims(read_space, read_num, NULL) < 0)
-    { H5Sclose(read_space);
-      H5Dclose(read_set);
-      return (BAX_NR_EVENTS_ERR);
-    }
-
-  { int nreads = read_num[0];
-    int rlen[nreads];
-
-    if (H5Dread(read_set, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, rlen) < 0)
-      { H5Sclose(read_space);
-        H5Dclose(read_set);
-        return (BAX_NR_EVENTS_ERR);
-      }
-    H5Sclose(read_space);
-    H5Dclose(read_set);
-
-    // Get the region annotations out of the bax file
-
-    region_set   = H5Dopen2(FileID, "/PulseData/Regions", H5P_DEFAULT);
-    region_space = H5Dget_space(region_set);
-    if (region_set < 0 || region_space < 0)
-      return (BAX_REGION_ERR);
-    if (H5Sget_simple_extent_dims(region_space, region_num, NULL)<0)
-      { H5Sclose(region_space);
-        H5Dclose(region_set);
-        return (BAX_REGION_ERR);
-      }
-
-    { int   nregions = region_num[0];
-      int   region[5*nregions+1];
-      int   roff, *hlen, *cur, h;
-      int   tolower;
-      char *header;
-
-      if (H5Dread(region_set, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, region) < 0)
-        { H5Sclose(region_space);
-          H5Dclose(region_set);
-          return (BAX_REGION_ERR);
-        }
-      H5Sclose(region_space);
-      H5Dclose(region_set);
 
 #define HOLE   0
 #define TYPE   1
@@ -233,146 +271,144 @@ static int writeBaxReads(BaxData *b, hid_t FileID,
 #define FINISH 3
 #define SCORE  4
 
-      //  Find the HQV regions and output as reads to the various output options
+  //  Find the HQV regions and output as reads to the various output options
 
-      tolower = isupper(b->baseCall[0]);
-      if (b->fastq)
-        header = fastq_header;
-      else
-        header = fasta_header;
+  tolower = isupper(b->baseCall[0]);
+  if (b->fastq)
+    header = fastq_header;
+  else
+    header = fasta_header;
 
-      roff    = 0;
-      cur     = region;
-      nreads += cur[HOLE];
-      hlen    = rlen - cur[HOLE];
-      region[5*nregions] = nreads; 
-      for (h = cur[HOLE]; h < nreads; h++)
-        { int *bot, *top, *hqv, *r;
-          int hbeg, hend, qv;
-          int ibeg, iend;
+  rlen    = b->readLen;
+  roff    = 0;
+  cur     = b->regions;
+  nreads  = b->numZMW + cur[HOLE];
+  hlen    = rlen - cur[HOLE];
+  cur[5*b->numHQR] = nreads; 
 
-          if (hlen[h] >= minLen)
-            { while (cur[HOLE] < h)
-                cur += 5;
-              bot = hqv = cur;
-              while (cur[HOLE] <= h)
-                { if (cur[TYPE] == HQV_REGION)
-                    hqv = cur;
-                  cur += 5;
-                }
-              top = cur-5;
+  for (h = cur[HOLE], w = 0; h < nreads; h++, w++)
+    { int *bot, *top, *hqv, *r;
+      int hbeg, hend, qv;
+      int ibeg, iend;
 
-              qv = hqv[SCORE];
-              if (qv >= minScore)
-                { hbeg = hqv[START];
-                  hend = hqv[FINISH];
-                  for (r = bot; r <= top; r += 5)
-                    { if (r[TYPE] != INSERT_REGION)
-                        continue;
+      if (hlen[h] >= minLen)
+        { while (cur[HOLE] < h)
+            cur += 5;
+          bot = hqv = cur;
+          while (cur[HOLE] <= h)
+            { if (cur[TYPE] == HQV_REGION)
+                hqv = cur;
+              cur += 5;
+            }
+          top = cur-5;
 
-                      ibeg = r[START];
-                      iend = r[FINISH];
+          qv = hqv[SCORE];
+          if (qv >= minScore)
+            { hbeg = hqv[START];
+              hend = hqv[FINISH];
+              for (r = bot; r <= top; r += 5)
+                { if (r[TYPE] != INSERT_REGION)
+                    continue;
 
-                      if (ibeg < hbeg)
-                        ibeg = hbeg;
-                      if (iend > hend)
-                        iend = hend;
-                      if (iend - ibeg < minLen)
-                        continue;
+                  ibeg = r[START];
+                  iend = r[FINISH];
 
-                      fprintf(output,header,b->shortName,h,ibeg,iend,qv);
+                  if (ibeg < hbeg)
+                    ibeg = hbeg;
+                  if (iend > hend)
+                    iend = hend;
+                  if (iend - ibeg < minLen || b->holeType[w] > 0)
+                    continue;
 
-                      ibeg += roff;
-                      iend += roff;
+                  fprintf(output,header,b->shortName,h,ibeg,iend,qv);
 
-                      if (tolower)
-                        { int a;
+                  ibeg += roff;
+                  iend += roff;
 
-                          for (a = ibeg; a < iend; a++)
-                            b->baseCall[a] += LOWER_OFFSET;
-                          if (b->quivqv)
-                            for (a = ibeg; a < iend; a++)
-                              b->delTag[a] += LOWER_OFFSET;
-                        }
+                  if (tolower)
+                    { int a;
 
-                      if (b->fastq)
-                        { int a;
-
-                          fprintf(output,"%.*s\n", iend-ibeg, b->baseCall + ibeg);
-                          fprintf(output,"+\n");
-                          for (a = ibeg; a < iend; a++)
-                            fputc(b->fastQV[a]+PHRED_OFFSET,output);
-                          fputc('\n',output);
-                        }
-                      else
-                        { int a;
-
-                          for (a = ibeg; a < iend; a += 80)
-                            if (a+80 > iend)
-                              fprintf(output,"%.*s\n", iend-a, b->baseCall + a);
-                            else
-                              fprintf(output,"%.80s\n", b->baseCall + a);
-                        }
-
+                      for (a = ibeg; a < iend; a++)
+                        b->baseCall[a] += LOWER_OFFSET;
                       if (b->quivqv)
-                        { int a;
+                        for (a = ibeg; a < iend; a++)
+                          b->delTag[a] += LOWER_OFFSET;
+                    }
 
-                          fprintf(qvquiv,"@%s/%d/%d_%d RQ=0.%d\n",
-                                         b->shortName,h,ibeg-roff,iend-roff,qv);
+                  if (b->fastq)
+                    { int a;
 
-                          for (a = ibeg; a < iend; a++)
-                            fputc(b->delQV[a]+PHRED_OFFSET,qvquiv);
-                          fputc('\n',qvquiv);
+                      fprintf(output,"%.*s\n", iend-ibeg, b->baseCall + ibeg);
+                      fprintf(output,"+\n");
+                      for (a = ibeg; a < iend; a++)
+                        fputc(b->fastQV[a]+PHRED_OFFSET,output);
+                      fputc('\n',output);
+                    }
+                  else
+                    { int a;
 
-                          fprintf (qvquiv, "%.*s\n", iend-ibeg, b->delTag + ibeg);
+                      for (a = ibeg; a < iend; a += 80)
+                        if (a+80 > iend)
+                          fprintf(output,"%.*s\n", iend-a, b->baseCall + a);
+                        else
+                          fprintf(output,"%.80s\n", b->baseCall + a);
+                    }
 
-                          for (a = ibeg; a < iend; a++)
-                            fputc(b->insQV[a]+PHRED_OFFSET,qvquiv);
-                          fputc('\n',qvquiv);
+                  if (b->quivqv)
+                    { int a;
 
-                          for (a = ibeg; a < iend; a++)
-                            fputc(b->mergeQV[a]+PHRED_OFFSET,qvquiv);
-                          fputc('\n',qvquiv);
+                      fprintf(qvquiv,"@%s/%d/%d_%d RQ=0.%d\n",
+                                     b->shortName,h,ibeg-roff,iend-roff,qv);
 
-                          for (a = ibeg; a < iend; a++)
-                            fputc(b->subQV[a]+PHRED_OFFSET,qvquiv);
-                          fputc('\n',qvquiv);
-                        }
+                      for (a = ibeg; a < iend; a++)
+                        fputc(b->delQV[a]+PHRED_OFFSET,qvquiv);
+                      fputc('\n',qvquiv);
+
+                      fprintf (qvquiv, "%.*s\n", iend-ibeg, b->delTag + ibeg);
+
+                      for (a = ibeg; a < iend; a++)
+                        fputc(b->insQV[a]+PHRED_OFFSET,qvquiv);
+                      fputc('\n',qvquiv);
+
+                      for (a = ibeg; a < iend; a++)
+                        fputc(b->mergeQV[a]+PHRED_OFFSET,qvquiv);
+                      fputc('\n',qvquiv);
+
+                      for (a = ibeg; a < iend; a++)
+                        fputc(b->subQV[a]+PHRED_OFFSET,qvquiv);
+                      fputc('\n',qvquiv);
                     }
                 }
             }
-          roff += hlen[h];
         }
+      roff += hlen[h];
     }
-  }
-
-  return (1);
 }
 
 //  Print an error message
 
-static void printBaxError(int errorCode)
+static void printBaxError(int ecode)
 { fprintf(stderr,"  *** Warning ***: ");
-  switch (errorCode)
+  switch (ecode)
     { case CANNOT_OPEN_BAX_FILE:
         fprintf(stderr,"Cannot open bax file:\n");
         break;
       case BAX_BASECALL_ERR:
         fprintf(stderr,"Cannot parse /PulseData/BaseCalls/Basecall from file:\n");
         break;
-      case BAX_DELETIONQV_ERR:
+      case BAX_DEL_ERR:
         fprintf(stderr,"Cannot parse /PulseData/BaseCalls/DeletionQV from file:\n");
         break;
-      case BAX_DELETIONTAG_ERR:
+      case BAX_TAG_ERR:
         fprintf(stderr,"Cannot parse /PulseData/BaseCalls/DeletionTag from file:\n");
         break;
-      case BAX_INSERTIONQV_ERR:
+      case BAX_INS_ERR:
         fprintf(stderr,"Cannot parse /PulseData/BaseCalls/InsertionQV from file:\n");
         break;
-      case BAX_MERGEQV_ERR:
+      case BAX_MRG_ERR:
         fprintf(stderr,"Cannot parse /PulseData/BaseCalls/MergeQV from file:\n");
         break;
-      case BAX_SUBSTITUTIONQV_ERR:
+      case BAX_SUB_ERR:
         fprintf(stderr,"Cannot parse /PulseData/BaseCalls/SubstitutionQV from file:\n");
         break;
       case BAX_QV_ERR:
@@ -384,6 +420,9 @@ static void printBaxError(int errorCode)
       case BAX_REGION_ERR:
         fprintf(stderr,"Cannot parse /PulseData/Regions from file:\n");
         break;
+      case BAX_HOLESTATUS_ERR:
+        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/ZMW/HoleStatus from file:\n");
+        break;
       default: 
         fprintf(stderr,"Cannot parse bax file:\n");
         break;
@@ -394,14 +433,13 @@ static void printBaxError(int errorCode)
 //  Free *the* bax data structure
 
 static void freeBaxData(BaxData *b)
-{ if (b->baseCall != NULL)
-    free(b->baseCall);
-  if (b->delQV != NULL)
-    free(b->delQV);
-  if (b->fastQV != NULL)
-    free(b->fastQV);
+{ free(b->baseCall);
+  free(b->delQV);
+  free(b->fastQV);
+  free(b->holeType);
+  free(b->readLen);
+  free(b->regions);
 }
-
 
 int main(int argc, char* argv[])
 { char *output;
@@ -493,7 +531,6 @@ int main(int argc, char* argv[])
 
     for (i = 1; i < argc; i++)
       { char *root, *full, *input;
-        hid_t fileID;
         int   ecode;
 
         { char *pwd;
@@ -521,26 +558,20 @@ int main(int argc, char* argv[])
 
         if (VERBOSE)
           { fprintf(stderr, "Fetching file : %s ...", root); fflush(stderr); }
-        ecode = fileID = getBaxData(&b);
 
-        if (ecode > 0)
+        if ((ecode = getBaxData(&b)) == 0)
           { if (VERBOSE)
               { fprintf(stderr, " Extracting subreads ..."); fflush(stderr); }
-            ecode = writeBaxReads(&b, fileID, MIN_LEN, MIN_SCORE, fileOut, fileQuiv);
-
-            H5Fclose(fileID);
+            writeBaxReads(&b, MIN_LEN, MIN_SCORE, fileOut, fileQuiv);
+            if (VERBOSE)
+              { fprintf(stderr, " Done\n"); fflush(stdout); }
           }
-
-        if (ecode < 0)
+        else
           { if (VERBOSE)
               fprintf(stderr, " Skipping due to failure\n"); 
             else
               fprintf(stderr, " Skipping %s due to failure\n",root); 
             printBaxError(ecode);
-          }
-        else
-          { if (VERBOSE)
-              { fprintf(stderr, " Done\n"); fflush(stdout); }
           }
 
         free(root);
