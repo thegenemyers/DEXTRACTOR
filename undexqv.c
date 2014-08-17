@@ -136,27 +136,34 @@ int main(int argc, char* argv[])
               if (fread(&byte,1,1,input) < 1) break;
               while (byte == 255)
                 { well += 255;
-                  fread(&byte,1,1,input);
+                  if (fread(&byte,1,1,input) != 1)
+                    SYSTEM_ERROR
                 }
               well += byte;
 
               if (coding->flip)
-                { fread(&half,sizeof(uint16),1,input);
+                { if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   flip_short(&half);
                   beg = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   flip_short(&half);
                   end = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   flip_short(&half);
                   qv = half;
                 }
               else
-                { fread(&half,sizeof(uint16),1,input);
+                { if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   beg = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   end = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   qv = half;
                 }
 
@@ -166,7 +173,7 @@ int main(int argc, char* argv[])
 
               rlen = end-beg;
               if (rlen > emax)
-                { emax = 1.2*rlen + 1000;
+                { emax = ((int) (1.2*rlen)) + 1000;
                   entry[0] = (char *) Realloc(entry[0],5*emax,"Reallocating QV entry buffer");
                   if (entry[0] == NULL)
                     exit (1);

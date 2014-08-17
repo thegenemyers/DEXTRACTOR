@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
                     break;
                   rlen += x;
                   if (rlen + MAX_BUFFER > rmax)
-                    { rmax = 1.2 * rmax + 1000 + MAX_BUFFER;
+                    { rmax = ((int) (1.2 * rmax)) + 1000 + MAX_BUFFER;
                       read = (char *) Realloc(read,rmax+1,"Reallocaing read buffer");
                       if (read == NULL)
                         exit (1);

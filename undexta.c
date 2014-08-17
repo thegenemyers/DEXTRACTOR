@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
         // Open dexta file
 
         pwd   = PathTo(argv[i]);
-        root  = Root(argv[i],".fasta");
+        root  = Root(argv[i],".dexta");
         input = Fopen(Catenate(pwd,"/",root,".dexta"),"r");
         if (input == NULL)
           exit (1);
@@ -143,13 +143,18 @@ int main(int argc, char *argv[])
 
           { uint16 half;
 
-            fread(&half,sizeof(uint16),1,input);
+            if (fread(&half,sizeof(uint16),1,input) != 1)
+              SYSTEM_ERROR
             flip = (half != 0x33cc);
 
-            fread(&well,sizeof(int),1,input);
+            if (fread(&well,sizeof(int),1,input) != 1)
+              SYSTEM_ERROR
             if (flip) flip_long(&well);
             name = (char *) Malloc(well+1,"Allocating header prefix");
-            fread(name,1,well,input);
+            if (well > 0)
+              { if (fread(name,well,1,input) != 1)
+                  SYSTEM_ERROR
+              }
             name[well] = '\0';
           }
 
@@ -158,6 +163,7 @@ int main(int argc, char *argv[])
           well = 0;
           while (1)
             { int    rlen, beg, end, qv;
+              int    clen;
               uint16 half;
               uint8  byte;
 
@@ -166,27 +172,34 @@ int main(int argc, char *argv[])
               if (fread(&byte,1,1,input) < 1) break;
               while (byte == 255)
                 { well += 255;
-                  fread(&byte,1,1,input);
+                  if (fread(&byte,1,1,input) != 1)
+                    SYSTEM_ERROR
                 }
               well += byte;
 
               if (flip)
-                { fread(&half,sizeof(uint16),1,input);
+                { if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   flip_short(&half);
                   beg = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   flip_short(&half);
                   end = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   flip_short(&half);
                   qv = half;
                 }
               else
-                { fread(&half,sizeof(uint16),1,input);
+                { if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   beg = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   end = half;
-                  fread(&half,sizeof(uint16),1,input);
+                  if (fread(&half,sizeof(uint16),1,input) != 1)
+                    SYSTEM_ERROR
                   qv = half;
                 }
 
@@ -197,10 +210,14 @@ int main(int argc, char *argv[])
 
               rlen = end-beg;
               if (rlen > rmax)
-                { rmax = 1.2 * rmax + 1000 + MAX_BUFFER;
+                { rmax = ((int) (1.2 * rmax)) + 1000 + MAX_BUFFER;
                   read = (char *) Realloc(read,rmax+1,"Allocating read buffer");
                 }
-              fread(read,1,COMPRESSED_LEN(rlen),input);
+              clen = COMPRESSED_LEN(rlen);
+              if (clen > 0)
+                { if (fread(read,clen,1,input) != 1)
+                    SYSTEM_ERROR
+                }
               Uncompress_Read(rlen,read);
               Lower_Read(read);
 

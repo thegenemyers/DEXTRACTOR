@@ -124,11 +124,15 @@ int main(int argc, char* argv[])
 
           slash = index(read+1,'/');
           if (slash != NULL)
-            { coding->prefix = strndup(read,slash-read);
+            { coding->prefix = (char *) malloc((slash-read)+1);
               if (coding->prefix == NULL)
                  { fprintf(stderr,"%s: Out of memory (Allocating header prefix)\n",Prog_Name);
                    exit (1);
                  }
+              *slash = '\0';
+              if (strcpy(coding->prefix,read) == NULL)
+                SYSTEM_ERROR
+              *slash = '/';
             }
         }
 

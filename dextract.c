@@ -115,6 +115,10 @@ static void initBaxData(BaxData *b, int fastq, int quivqv)
   b->quivqv    = quivqv;
   b->baseCall  = NULL;
   b->delQV     = NULL;
+  b->delTag    = NULL;
+  b->insQV     = NULL;
+  b->mergeQV   = NULL;
+  b->subQV     = NULL;
   b->fastQV    = NULL;
   b->readLen   = NULL;
   b->holeType  = NULL;
@@ -189,7 +193,7 @@ static int getBaxData(BaxData *b)
   if (file_id < 0)
     return (CANNOT_OPEN_BAX_FILE);
 
-#if DEBUG
+#ifdef DEBUG
   printf("PROCESSING %s, file_id: %d\n", baxFileName, file_id);
 #endif
 
@@ -258,7 +262,7 @@ static void writeBaxReads(BaxData *b, int minLen, int minScore, FILE *output, FI
   int   tolower;
   char *header;
 
-#if DEBUG
+#ifdef DEBUG
   printf("printSubreadFields\n");
 #endif
 
