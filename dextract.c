@@ -509,10 +509,12 @@ int main(int argc, char* argv[])
 
   fileQuiv = NULL;
   if (QUIVQV)
-    { if (*output == '\0')
+    { int explicit;
+
+      explicit = (*output != '\0');
+      if ( ! explicit)
         output = Root(argv[1],NULL);
-      else
-        output = Strdup(output,"Allocating output file root");
+
       if (FASTQ)
         fileOut = Fopen(Catenate("","",output,".fastq"), "w");
       else
@@ -520,6 +522,9 @@ int main(int argc, char* argv[])
       fileQuiv = Fopen(Catenate("","",output,".quiva"), "w");
       if (fileOut == NULL || fileQuiv == NULL)
         exit (1);
+
+      if (explicit)
+        output = Root(output,NULL);
     }
   else
     fileOut = stdout;
