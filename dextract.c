@@ -566,20 +566,20 @@ int main(int argc, char* argv[])
           initBaxNames(&b,full,input);
 
         if (VERBOSE)
-          { fprintf(stderr, "Fetching file : %s ...", root); fflush(stderr); }
+          { fprintf(stderr, "Fetching file : %s ...\n", root); fflush(stderr); }
 
         if ((ecode = getBaxData(&b)) == 0)
           { if (VERBOSE)
-              { fprintf(stderr, " Extracting subreads ..."); fflush(stderr); }
+              { fprintf(stderr, "Extracting subreads ...\n"); fflush(stderr); }
             writeBaxReads(&b, MIN_LEN, MIN_SCORE, fileOut, fileQuiv);
             if (VERBOSE)
-              { fprintf(stderr, " Done\n"); fflush(stdout); }
+              { fprintf(stderr, "Done\n"); fflush(stdout); }
           }
         else
           { if (VERBOSE)
-              fprintf(stderr, " Skipping due to failure\n"); 
+              fprintf(stderr, "Skipping due to failure\n"); 
             else
-              fprintf(stderr, " Skipping %s due to failure\n",root); 
+              fprintf(stderr, "Skipping %s due to failure\n",root); 
             printBaxError(ecode);
           }
 

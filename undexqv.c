@@ -112,7 +112,7 @@ int main(int argc, char* argv[])
           exit (1);
 
         if (VERBOSE)
-          { fprintf(stderr,"Processing '%s' ... ",root);
+          { fprintf(stderr,"Processing '%s' ...\n",root);
             fflush(stderr);
           }
 
@@ -201,7 +201,7 @@ int main(int argc, char* argv[])
         free(pwd);
 
         if (VERBOSE)
-          { fprintf(stderr," Done\n");
+          { fprintf(stderr,"Done\n");
             fflush(stderr);
           }
       }
