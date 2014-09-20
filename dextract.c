@@ -104,6 +104,8 @@ typedef struct
     hsize_t numHQR;        // number of regions
     int    *regions;       // region information (5 ints per entry)
 
+    int     delLimit;     //  The Del QV associated with N's in the Del Tag
+
   } BaxData;
 
 //  Initialize *the* BaxData structure
@@ -239,6 +241,18 @@ static int getBaxData(BaxData *b)
   ensureHQR(b,field_len[0]);
   FETCH(regions,H5T_NATIVE_INT)
 
+  //  Find the Del QV associated with N's in the Del Tag
+
+  if (b->quivqv)
+    { hsize_t  i;
+  
+      for (i = 0; i < b->numBP; i++)
+        if (b->delTag[i] == 'N')
+          { b->delLimit = b->delQV[i];
+            break;
+          }
+    }
+
   return (0);
 
 exit2:
@@ -262,6 +276,22 @@ static void writeBaxReads(BaxData *b, int minLen, int minScore, FILE *output, FI
   int   tolower;
   char *header;
 
+  char   *baseCall;
+  char   *delQV;
+  char   *delTag;
+  char   *insQV;
+  char   *mergeQV;
+  char   *subQV;
+  char   *fastQV;
+
+  baseCall = b->baseCall;
+  delQV    = b->delQV;
+  delTag   = b->delTag;
+  insQV    = b->insQV;
+  mergeQV  = b->mergeQV;
+  subQV    = b->subQV;
+  fastQV   = b->fastQV;
+
 #ifdef DEBUG
   printf("printSubreadFields\n");
 #endif
@@ -275,7 +305,7 @@ static void writeBaxReads(BaxData *b, int minLen, int minScore, FILE *output, FI
 #define FINISH 3
 #define SCORE  4
 
-  //  Find the HQV regions and output as reads to the various output options
+  //  Find the HQV regions and output as reads according to the various output options
 
   tolower = isupper(b->baseCall[0]);
   if (b->fastq)
@@ -333,19 +363,19 @@ static void writeBaxReads(BaxData *b, int minLen, int minScore, FILE *output, FI
                     { int a;
 
                       for (a = ibeg; a < iend; a++)
-                        b->baseCall[a] += LOWER_OFFSET;
+                        baseCall[a] += LOWER_OFFSET;
                       if (b->quivqv)
                         for (a = ibeg; a < iend; a++)
-                          b->delTag[a] += LOWER_OFFSET;
+                          delTag[a] += LOWER_OFFSET;
                     }
 
                   if (b->fastq)
                     { int a;
 
-                      fprintf(output,"%.*s\n", iend-ibeg, b->baseCall + ibeg);
+                      fprintf(output,"%.*s\n", iend-ibeg, baseCall + ibeg);
                       fprintf(output,"+\n");
                       for (a = ibeg; a < iend; a++)
-                        fputc(b->fastQV[a]+PHRED_OFFSET,output);
+                        fputc(fastQV[a]+PHRED_OFFSET,output);
                       fputc('\n',output);
                     }
                   else
@@ -353,34 +383,33 @@ static void writeBaxReads(BaxData *b, int minLen, int minScore, FILE *output, FI
 
                       for (a = ibeg; a < iend; a += 80)
                         if (a+80 > iend)
-                          fprintf(output,"%.*s\n", iend-a, b->baseCall + a);
+                          fprintf(output,"%.*s\n", iend-a, baseCall + a);
                         else
-                          fprintf(output,"%.80s\n", b->baseCall + a);
+                          fprintf(output,"%.80s\n", baseCall + a);
                     }
 
                   if (b->quivqv)
-                    { int a;
+                    { int a, d;
 
                       fprintf(qvquiv,"@%s/%d/%d_%d RQ=0.%d\n",
                                      b->shortName,h,ibeg-roff,iend-roff,qv);
 
+                      d = b->delLimit;
                       for (a = ibeg; a < iend; a++)
-                        fputc(b->delQV[a]+PHRED_OFFSET,qvquiv);
-                      fputc('\n',qvquiv);
+                        { if (delQV[a] == d)
+                            delTag[a] = 'n';
+                          delQV[a]   += PHRED_OFFSET;
+                          insQV[a]   += PHRED_OFFSET;
+                          mergeQV[a] += PHRED_OFFSET;
+                          subQV[a]   += PHRED_OFFSET;
+                        }
 
-                      fprintf (qvquiv, "%.*s\n", iend-ibeg, b->delTag + ibeg);
-
-                      for (a = ibeg; a < iend; a++)
-                        fputc(b->insQV[a]+PHRED_OFFSET,qvquiv);
-                      fputc('\n',qvquiv);
-
-                      for (a = ibeg; a < iend; a++)
-                        fputc(b->mergeQV[a]+PHRED_OFFSET,qvquiv);
-                      fputc('\n',qvquiv);
-
-                      for (a = ibeg; a < iend; a++)
-                        fputc(b->subQV[a]+PHRED_OFFSET,qvquiv);
-                      fputc('\n',qvquiv);
+                      iend -= ibeg;
+                      fprintf (qvquiv, "%.*s\n", iend, delQV + ibeg);
+                      fprintf (qvquiv, "%.*s\n", iend, delTag + ibeg);
+                      fprintf (qvquiv, "%.*s\n", iend, insQV + ibeg);
+                      fprintf (qvquiv, "%.*s\n", iend, mergeQV + ibeg);
+                      fprintf (qvquiv, "%.*s\n", iend, subQV + ibeg);
                     }
                 }
             }
