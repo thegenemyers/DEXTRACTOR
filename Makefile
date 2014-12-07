@@ -1,10 +1,10 @@
+PATH_HDF5 = /sw/apps/hdf5/current
 CFLAGS = -O3 -Wall -Wextra -fno-strict-aliasing
-% CFLAGS = -O3 -Wall -Wextra -fno-strict-aliasing -L/sw/apps/hdf5/current/lib -I/sw/apps/hdf5/current/include
 
 all: dextract dexta undexta dexqv undexqv
 
 dextract: dextract.c DB.c DB.h QV.c QV.h
-	gcc $(CFLAGS) -o dextract dextract.c DB.c QV.c -lhdf5
+	gcc $(CFLAGS) -I$(PATH_HDF5)/include -L$(PATH_HDF5)/lib -o dextract dextract.c DB.c QV.c -lhdf5
 
 dexta: dexta.c DB.c DB.h QV.c QV.h
 	gcc $(CFLAGS) -o dexta dexta.c DB.c QV.c
@@ -25,4 +25,5 @@ install:
 	cp dextract dexta undexta dexqv undexqv ~/bin
 
 package:
+	make clean
 	tar -zcf dextract.tar.gz README Makefile *.c *.h
