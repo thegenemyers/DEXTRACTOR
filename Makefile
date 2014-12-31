@@ -1,4 +1,5 @@
 PATH_HDF5 = /sw/apps/hdf5/current
+PATH_HDF5 = /usr/local/hdf5
 CFLAGS = -O3 -Wall -Wextra -fno-strict-aliasing
 
 all: dextract dexta undexta dexqv undexqv
@@ -20,6 +21,8 @@ undexqv: undexqv.c DB.c DB.h QV.c QV.h
 
 clean:
 	rm -f dextract dexta undexta dexqv undexqv dextract.tar.gz
+	rm -fr *.dSYM
+	rm -f dextract.tar.gz
 
 install:
 	cp dextract dexta undexta dexqv undexqv ~/bin
