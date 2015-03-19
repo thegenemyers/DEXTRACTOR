@@ -221,11 +221,14 @@ int main(int argc, char *argv[])
               Uncompress_Read(rlen,read);
               Lower_Read(read);
 
-              for (i = 0; i < rlen; i += 80)
-                if (i+80 > rlen)
-                  fprintf(output,"%.*s\n", rlen-i, read+i);
-                else
-                  fprintf(output,"%.80s\n", read+i);
+              { int j;
+
+                for (j = 0; j < rlen; j += 80)
+                  if (j+80 > rlen)
+                    fprintf(output,"%.*s\n", rlen-j, read+j);
+                  else
+                    fprintf(output,"%.80s\n", read+j);
+              }
             }
 
           free(name);
