@@ -116,24 +116,21 @@ int main(int argc, char* argv[])
 
         coding = Create_QVcoding(LOSSY);
 
-        { char *slash, *read;
+        { char *slash, *read;   //  Get header line prefix from first line
 
           rewind (input);
           Read_Lines(input,1);
           read = QVentry();
 
           slash = index(read+1,'/');
-          if (slash != NULL)
-            { coding->prefix = (char *) malloc((slash-read)+1);
-              if (coding->prefix == NULL)
-                 { fprintf(stderr,"%s: Out of memory (Allocating header prefix)\n",Prog_Name);
-                   exit (1);
-                 }
-              *slash = '\0';
-              if (strcpy(coding->prefix,read) == NULL)
-                SYSTEM_ERROR
-              *slash = '/';
-            }
+          coding->prefix = (char *) malloc((slash-read)+1);
+          if (coding->prefix == NULL)
+             { fprintf(stderr,"%s: Out of memory (Allocating header prefix)\n",Prog_Name);
+               exit (1);
+             }
+          *slash = '\0';
+          strcpy(coding->prefix,read);
+          *slash = '/';
         }
 
         Write_QVcoding(output,coding);

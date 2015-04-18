@@ -60,7 +60,8 @@ files between machines is possible.
 
 1. dextract  [-vq] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax.h5> ...
 
-    The dextract'or takes some number of .bax.h5 files as input and:
+    The dextract'or takes the .bax.h5 files produced for a given SMRT cell as
+input and:
 
     (a) if the -o option is set, then the information needed for Quiver is extracted
           and put in a file named <path>.quiva.  If the -q option is not set, then the
