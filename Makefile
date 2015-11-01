@@ -1,6 +1,6 @@
 PATH_HDF5 = /sw/apps/hdf5/current
 PATH_HDF5 = /usr/local/hdf5
-CFLAGS = -O3 -Wall -Wextra -fno-strict-aliasing
+CFLAGS = -O3 -Wall -Wextra -Wno-unused-result -fno-strict-aliasing
 
 all: dextract dexta undexta dexqv undexqv
 
