@@ -1,8 +1,13 @@
 PATH_HDF5 = /sw/apps/hdf5/current
 PATH_HDF5 = /usr/local/hdf5
+
+DEST_DIR  = ~/bin
+
 CFLAGS = -O3 -Wall -Wextra -Wno-unused-result -fno-strict-aliasing
 
-all: dextract dexta undexta dexqv undexqv
+ALL = dextract dexta undexta dexqv undexqv
+
+all: $(ALL)
 
 dextract: dextract.c DB.c DB.h QV.c QV.h
 	gcc $(CFLAGS) -I$(PATH_HDF5)/include -L$(PATH_HDF5)/lib -o dextract dextract.c DB.c QV.c -lhdf5
@@ -20,13 +25,13 @@ undexqv: undexqv.c DB.c DB.h QV.c QV.h
 	gcc $(CFLAGS) -o undexqv undexqv.c DB.c QV.c
 
 clean:
-	rm -f dextract dexta undexta dexqv undexqv dextract.tar.gz
+	rm -f $(ALL)
 	rm -fr *.dSYM
 	rm -f dextract.tar.gz
 
 install:
-	cp dextract dexta undexta dexqv undexqv ~/bin
+	cp $(ALL) $(DEST_DIR)
 
 package:
 	make clean
-	tar -zcf dextract.tar.gz README Makefile *.c *.h
+	tar -zcf dextract.tar.gz README Makefile *.h *.c
