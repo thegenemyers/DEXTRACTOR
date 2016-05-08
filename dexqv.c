@@ -73,7 +73,8 @@ int main(int argc, char* argv[])
 
         //  Scan the file collecting statistics for Huffman schemes
         
-        QVcoding_Scan(input);
+        Set_QV_Line(0);
+        QVcoding_Scan(input,INT32_MAX,NULL);
 
         //  Create and output the encoding schemes
 
@@ -103,6 +104,7 @@ int main(int argc, char* argv[])
         { int lwell;
 
           rewind (input);
+          Set_QV_Line(0);
 
           lwell = 0;
           while (Read_Lines(input,1) > 0)
