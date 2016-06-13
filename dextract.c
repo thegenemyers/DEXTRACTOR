@@ -88,6 +88,7 @@ static void initBaxData(BaxData *b, int fastq, int quivqv)
   b->readLen   = NULL;
   b->holeType  = NULL;
   b->regions   = NULL;
+  b->delLimit  = 0;
 }
 
 //  Record the names of the next bax file and reset the memory buffer high-water mark

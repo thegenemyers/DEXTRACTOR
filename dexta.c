@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
           rlen  = 0;
           lwell = 0;
           while (!eof)
-            { int    well, beg, end, qv;
+            { int    well, beg, end, qv, x;
               char  *slash;
               uint16 half;
               uint8  byte;
@@ -131,10 +131,13 @@ int main(int argc, char *argv[])
                 { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Prog_Name);
     		    exit (1);
                 }
-              if (sscanf(slash+1,"%d/%d_%d RQ=0.%d\n",&well,&beg,&end,&qv) != 4)
+              x = sscanf(slash+1,"%d/%d_%d RQ=0.%d\n",&well,&beg,&end,&qv);
+              if (x < 3)
                 { fprintf(stderr,"%s: Header line incorrectly formatted ?\n",Prog_Name);
                   exit (1);
                 }
+              else if (x == 3)
+                qv = 0;
 
               //  Read fasta sequence (@read) and stop at eof or after having read next header
 

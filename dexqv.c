@@ -15,6 +15,7 @@
 #include <string.h>
 #include <math.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "DB.h"
 
