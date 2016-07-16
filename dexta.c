@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
               exit (1);
             }
 
-          half = 0x33cc;
+          half = 0x55aa;
           fwrite(&half,sizeof(uint16),1,output);
 
           x = slash-read;
@@ -121,7 +121,6 @@ int main(int argc, char *argv[])
           while (!eof)
             { int    well, beg, end, qv, x;
               char  *slash;
-              uint16 half;
               uint8  byte;
 
               //  Next header is always at read+(rlen+1).  Interpret its fields
@@ -176,12 +175,9 @@ int main(int argc, char *argv[])
               fwrite(&byte,1,1,output);
               lwell = well;
 
-              half = (uint16) beg;
-              fwrite(&half,sizeof(uint16),1,output);
-              half = (uint16) end;
-              fwrite(&half,sizeof(uint16),1,output);
-              half = (uint16) qv;
-              fwrite(&half,sizeof(uint16),1,output);
+              fwrite(&beg,sizeof(int),1,output);
+              fwrite(&end,sizeof(int),1,output);
+              fwrite(&qv,sizeof(int),1,output);
 
               //  Compress read and output
 

@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
           }
 
         { char *name;
-          int   well, flip;
+          int   well, flip, newv;
 
           // Read endian key and short name common to all headers
 
@@ -108,7 +108,26 @@ int main(int argc, char *argv[])
 
             if (fread(&half,sizeof(uint16),1,input) != 1)
               SYSTEM_ERROR
-            flip = (half != 0x33cc);
+            if (half == 0x33cc)
+              { flip = 0;
+                newv = 0;
+              }
+            else if (half == 0xcc33)
+              { flip = 1;
+                newv = 0;
+              }
+            else if (half == 0x55aa)
+              { flip = 0;
+                newv = 1;
+              }
+            else if (half == 0xaa55)
+              { flip = 1;
+                newv = 1;
+              }
+            else
+              { fprintf(stderr,"%s: Not a .dexta file, endian key invalid\n",Prog_Name);
+                exit (1);
+              }
 
             if (fread(&well,sizeof(int),1,input) != 1)
               SYSTEM_ERROR
@@ -127,7 +146,6 @@ int main(int argc, char *argv[])
           while (1)
             { int    rlen, beg, end, qv;
               int    clen;
-              uint16 half;
               uint8  byte;
 
               //  Read and decompress header and output
@@ -140,31 +158,56 @@ int main(int argc, char *argv[])
                 }
               well += byte;
 
-              if (flip)
-                { if (fread(&half,sizeof(uint16),1,input) != 1)
-                    SYSTEM_ERROR
-                  flip_short(&half);
-                  beg = half;
-                  if (fread(&half,sizeof(uint16),1,input) != 1)
-                    SYSTEM_ERROR
-                  flip_short(&half);
-                  end = half;
-                  if (fread(&half,sizeof(uint16),1,input) != 1)
-                    SYSTEM_ERROR
-                  flip_short(&half);
-                  qv = half;
-                }
+              if (newv)
+                if (flip)
+                  { if (fread(&beg,sizeof(int),1,input) != 1)
+                      SYSTEM_ERROR
+                    flip_long(&beg);
+                    if (fread(&end,sizeof(int),1,input) != 1)
+                      SYSTEM_ERROR
+                    flip_long(&end);
+                    if (fread(&qv,sizeof(int),1,input) != 1)
+                      SYSTEM_ERROR
+                    flip_long(&qv);
+                  }
+                else
+                  { if (fread(&beg,sizeof(int),1,input) != 1)
+                      SYSTEM_ERROR
+                    if (fread(&end,sizeof(int),1,input) != 1)
+                      SYSTEM_ERROR
+                    if (fread(&qv,sizeof(int),1,input) != 1)
+                      SYSTEM_ERROR
+                  }
               else
-                { if (fread(&half,sizeof(uint16),1,input) != 1)
-                    SYSTEM_ERROR
-                  beg = half;
-                  if (fread(&half,sizeof(uint16),1,input) != 1)
-                    SYSTEM_ERROR
-                  end = half;
-                  if (fread(&half,sizeof(uint16),1,input) != 1)
-                    SYSTEM_ERROR
-                  qv = half;
-                }
+                if (flip)
+                  { uint16 half;
+
+                    if (fread(&half,sizeof(uint16),1,input) != 1)
+                      SYSTEM_ERROR
+                    flip_short(&half);
+                    beg = half;
+                    if (fread(&half,sizeof(uint16),1,input) != 1)
+                      SYSTEM_ERROR
+                    flip_short(&half);
+                    end = half;
+                    if (fread(&half,sizeof(uint16),1,input) != 1)
+                      SYSTEM_ERROR
+                    flip_short(&half);
+                    qv = half;
+                  }
+                else
+                  { uint16 half;
+
+                    if (fread(&half,sizeof(uint16),1,input) != 1)
+                      SYSTEM_ERROR
+                    beg = half;
+                    if (fread(&half,sizeof(uint16),1,input) != 1)
+                      SYSTEM_ERROR
+                    end = half;
+                    if (fread(&half,sizeof(uint16),1,input) != 1)
+                      SYSTEM_ERROR
+                    qv = half;
+                  }
 
               fprintf(output,"%s/%d/%d_%d RQ=0.%d\n",name,well,beg,end,qv);
 

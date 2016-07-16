@@ -55,6 +55,7 @@ int main(int argc, char* argv[])
 
     for (i = 1; i < argc; i++)
       { char     *pwd, *root;
+        uint16    half;
         FILE     *input, *output;
         QVcoding *coding;
         
@@ -98,6 +99,9 @@ int main(int argc, char* argv[])
           *slash = '/';
         }
 
+        half = 0x55aa;
+        fwrite(&half,sizeof(uint16),1,output);
+
         Write_QVcoding(output,coding);
 
         //  For each entry do
@@ -111,7 +115,6 @@ int main(int argc, char* argv[])
           while (Read_Lines(input,1) > 0)
             { int    well, beg, end, qv;
               char  *slash;
-	      uint16 half;
               uint8  byte;
 
               //  Interpret the header, encode and write out the fields
@@ -128,12 +131,9 @@ int main(int argc, char* argv[])
               fwrite(&byte,1,1,output);
               lwell = well;
 
-              half = (uint16) beg;
-              fwrite(&half,sizeof(uint16),1,output);
-              half = (uint16) end;
-              fwrite(&half,sizeof(uint16),1,output);
-              half = (uint16) qv;
-              fwrite(&half,sizeof(uint16),1,output);
+              fwrite(&beg,sizeof(int),1,output);
+              fwrite(&end,sizeof(int),1,output);
+              fwrite(&qv,sizeof(int),1,output);
 
               Compress_Next_QVentry(input,output,coding,LOSSY);
             }
