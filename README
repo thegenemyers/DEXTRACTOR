@@ -94,7 +94,7 @@ input and:
     quality/score of reads to be extracted (default 750 = 75%).
 
 2. dexta   [-vk] <path:fasta> ...
-   undexta [-vk] <path:dexta> ...
+   undexta [-vkU] [-w<int(80)>] <path:dexta> ...
 
     Dexta compresses a set of .fasta files (produced by either Pacbio's software or
     dextract) and replaces them with new files with a .dexta extension.  That is,
@@ -103,10 +103,13 @@ input and:
     -v is set, then the program reports its progress on each file.  Otherwise it runs
     completely silently (good for batch jobs to an HPC cluster).  The compression
     factor is always slightly better than 4.0.  Undexta reverses the compression of
-    dexta, replacing the uncompressed image of G.dexta with G.fasta.
+    dexta, replacing the uncompressed image of G.dexta with G.fasta.  By default the
+    sequences output by undexta are in lower case and 80 chars per line.  The -U
+    option specifies upper case should be used, and the characters per line, or line
+    width, can be set to any positive value with the -w option
 
 3. dexqv   [-vkl] <path:quiva> ...
-   undexqv [-vk]  <path:dexqv> ...
+   undexqv [-vkU]  <path:dexqv> ...
 
     Dexqv compresses a set of .quiva files (produced by dextract) into new files with a
     .dexqv extension.  That is, submitting G.quiva will result in a compressed image
@@ -117,7 +120,10 @@ input and:
     be seen if Quiver gives the same results with the scaled values responsible for the
     loss.  Undexqv reverses the compression of dexqv, replacing the uncompressed image
     of G.dexqv with G.quiva.  The flags are analgous to the v & k flags for dexqv.
-    The compression factor is typically 3.4 or so (4.0 or so with -l set).
+    The compression factor is typically 3.4 or so (4.0 or so with -l set).  By .fastq
+    convention each QV vector is output by undexqv as a line without intervening
+    new-lines, and by default the Deletion Tag vector is in lower case letters. The -U
+    option specifies upper case letters should instead be used for said vector.
 
   To compile the programs you must have the HDF5 library installed on your system and
 the library and include files for said must be on the appropriate search paths.  The

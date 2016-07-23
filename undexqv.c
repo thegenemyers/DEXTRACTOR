@@ -15,7 +15,7 @@
 
 #include "DB.h"
 
-static char *Usage = "[-vk] <path:dexqv> ...";
+static char *Usage = "[-vkU] <path:dexqv> ...";
 
 static void flip_short(void *w)
 { uint8 *v = (uint8 *) w;
@@ -41,6 +41,7 @@ static void flip_long(void *w)
 int main(int argc, char* argv[])
 { int VERBOSE;
   int KEEP;
+  int UPPER;
 
   { int i, j, k;
     int flags[128];
@@ -50,13 +51,14 @@ int main(int argc, char* argv[])
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
-        { ARG_FLAGS("vk") }
+        { ARG_FLAGS("vkU") }
       else
         argv[j++] = argv[i];
     argc = j;
 
     VERBOSE = flags['v'];
     KEEP    = flags['k'];
+    UPPER   = flags['U'];
 
     if (argc == 1)
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
@@ -189,6 +191,14 @@ int main(int argc, char* argv[])
                 }
 
               Uncompress_Next_QVentry(input,entry,coding,rlen);
+
+              if (UPPER)
+                { char *deltag = entry[1];
+                  int   j;
+
+                  for (j = 0; j < rlen; j++)
+                    deltag[j] -= 32;
+                }
 
               for (e = 0; e < 5; e++)
                 fprintf(output,"%.*s\n",rlen,entry[e]);

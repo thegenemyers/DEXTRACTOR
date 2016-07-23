@@ -15,7 +15,7 @@
 
 #include "DB.h"
 
-static char *Usage = "[-vk] <path:dexta> ...";
+static char *Usage = "[-vkU] [-w<int(80)>] <path:dexta> ...";
 
 #define MAX_BUFFER 100000
 
@@ -45,25 +45,35 @@ static void flip_short(void *w)
 int main(int argc, char *argv[])
 { int     VERBOSE;
   int     KEEP;
+  int     UPPER;
+  int     WIDTH;
 
-  { int i, j, k;
-    int flags[128];
+  { int  i, j, k;
+    int  flags[128];
+    char *eptr;
 
     ARG_INIT("undexta")
 
-    VERBOSE = 1;
-    KEEP    = 0;
+    WIDTH   = 80;
 
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
-        { ARG_FLAGS("vk") }
+        switch (argv[i][1])
+        { default:
+            ARG_FLAGS("vkU")
+            break;
+          case 'w':
+            ARG_NON_NEGATIVE(WIDTH,"Line width")
+            break;
+        }
       else
         argv[j++] = argv[i];
     argc = j;
 
     VERBOSE = flags['v'];
     KEEP    = flags['k'];
+    UPPER   = flags['U'];
 
     if (argc == 1)
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
@@ -212,7 +222,7 @@ int main(int argc, char *argv[])
               fprintf(output,"%s/%d/%d_%d RQ=0.%d\n",name,well,beg,end,qv);
 
               //  Read compressed sequence (into buffer big enough for uncompressed sequence)
-              //  Uncompress and output 80 symbols to a line
+              //  Uncompress and output WIDTH symbols to a line
 
               rlen = end-beg;
               if (rlen > rmax)
@@ -225,15 +235,18 @@ int main(int argc, char *argv[])
                     SYSTEM_ERROR
                 }
               Uncompress_Read(rlen,read);
-              Lower_Read(read);
+              if (UPPER)
+                Upper_Read(read);
+              else
+                Lower_Read(read);
 
               { int j;
 
-                for (j = 0; j < rlen; j += 80)
-                  if (j+80 > rlen)
+                for (j = 0; j < rlen; j += WIDTH)
+                  if (j+WIDTH > rlen)
                     fprintf(output,"%.*s\n", rlen-j, read+j);
                   else
-                    fprintf(output,"%.80s\n", read+j);
+                    fprintf(output,"%.*s\n", WIDTH, read+j);
               }
             }
 
