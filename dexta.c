@@ -16,7 +16,7 @@
 
 #include "DB.h"
 
-static char *Usage = "[-vk] <path:fasta> ...";
+static char *Usage = "[-vk] (-i | <path:fasta> ...)";
 
 #define MAX_BUFFER 100000
 
@@ -25,6 +25,7 @@ static char *Usage = "[-vk] <path:fasta> ...";
 int main(int argc, char *argv[])
 { int     VERBOSE;
   int     KEEP;
+  int     PIPE;
 
   { int i, j, k;
     int flags[128];
@@ -34,17 +35,22 @@ int main(int argc, char *argv[])
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
-        { ARG_FLAGS("vk") }
+        { ARG_FLAGS("vki") }
       else
         argv[j++] = argv[i];
     argc = j;
 
     VERBOSE = flags['v'];
     KEEP    = flags['k'];
+    PIPE    = flags['i'];
 
-    if (argc == 1)
+    if ((PIPE && argc > 1) || (!PIPE && argc <= 1))
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
         exit (1);
+      }
+    if (PIPE)
+      { KEEP = 1;
+        argc = 2;
       }
   }
 
@@ -67,14 +73,22 @@ int main(int argc, char *argv[])
 
         // Open fasta file
 
-        pwd   = PathTo(argv[i]);
-        root  = Root(argv[i],".fasta");
-        input = Fopen(Catenate(pwd,"/",root,".fasta"),"r");
-        if (input == NULL)
-          exit (1);
-        output = Fopen(Catenate(pwd,"/",root,".dexta"),"w");
-        if (output == NULL)
-          exit (1);
+        if (PIPE)
+          { input  = stdin;
+            output = stdout;
+            pwd    = NULL;
+            root   = Strdup("Standard Input","Allocaing string");
+          }
+        else
+          { pwd   = PathTo(argv[i]);
+            root  = Root(argv[i],".fasta");
+            input = Fopen(Catenate(pwd,"/",root,".fasta"),"r");
+            if (input == NULL)
+              exit (1);
+            output = Fopen(Catenate(pwd,"/",root,".dexta"),"w");
+            if (output == NULL)
+              exit (1);
+          }
 
         if (VERBOSE)
           { fprintf(stderr,"Processing '%s' ...\n",root);
