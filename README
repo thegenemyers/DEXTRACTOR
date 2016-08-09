@@ -93,8 +93,9 @@ input and:
     length to be extracted (default 500) and the -s parameter determines the minimum
     quality/score of reads to be extracted (default 750 = 75%).
 
-2. dexta   [-vk] <path:fasta> ...
-   undexta [-vkU] [-w<int(80)>] <path:dexta> ...
+
+2. dexta   [-vk] ( -i | <path:fasta> .. .)
+   undexta [-vkU] [-w<int(80)>] ( -i | <path:dexta> ... )
 
     Dexta compresses a set of .fasta files (produced by either Pacbio's software or
     dextract) and replaces them with new files with a .dexta extension.  That is,
@@ -107,6 +108,11 @@ input and:
     sequences output by undexta are in lower case and 80 chars per line.  The -U
     option specifies upper case should be used, and the characters per line, or line
     width, can be set to any positive value with the -w option
+
+    With the -i option set, the programs run as UNIX pipes that take .fasta (.dexta)
+    input from the standard input and write .dexta (.fasta) to the standard output.
+    In this case the -k option has no effect.
+
 
 3. dexqv   [-vkl] <path:quiva> ...
    undexqv [-vkU]  <path:dexqv> ...
@@ -124,6 +130,7 @@ input and:
     convention each QV vector is output by undexqv as a line without intervening
     new-lines, and by default the Deletion Tag vector is in lower case letters. The -U
     option specifies upper case letters should instead be used for said vector.
+
 
   To compile the programs you must have the HDF5 library installed on your system and
 the library and include files for said must be on the appropriate search paths.  The

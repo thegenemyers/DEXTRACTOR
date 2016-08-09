@@ -15,7 +15,7 @@
 
 #include "DB.h"
 
-static char *Usage = "[-vkU] [-w<int(80)>] <path:dexta> ...";
+static char *Usage = "[-vkU] [-w<int(80)>] ( -i | <path:dexta> ... )";
 
 #define MAX_BUFFER 100000
 
@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
   int     KEEP;
   int     UPPER;
   int     WIDTH;
+  int     PIPE;
 
   { int  i, j, k;
     int  flags[128];
@@ -61,7 +62,7 @@ int main(int argc, char *argv[])
       if (argv[i][0] == '-')
         switch (argv[i][1])
         { default:
-            ARG_FLAGS("vkU")
+            ARG_FLAGS("vkiU")
             break;
           case 'w':
             ARG_NON_NEGATIVE(WIDTH,"Line width")
@@ -74,10 +75,15 @@ int main(int argc, char *argv[])
     VERBOSE = flags['v'];
     KEEP    = flags['k'];
     UPPER   = flags['U'];
+    PIPE    = flags['i'];
 
-    if (argc == 1)
+    if ((PIPE && argc > 1) || (!PIPE && argc <= 1))
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
         exit (1);
+      }
+    if (PIPE)
+      { KEEP = 1;
+        argc = 2;
       }
   }
 
@@ -95,14 +101,22 @@ int main(int argc, char *argv[])
 
         // Open dexta file
 
-        pwd   = PathTo(argv[i]);
-        root  = Root(argv[i],".dexta");
-        input = Fopen(Catenate(pwd,"/",root,".dexta"),"r");
-        if (input == NULL)
-          exit (1);
-        output = Fopen(Catenate(pwd,"/",root,".fasta"),"w");
-        if (output == NULL)
-          exit (1);
+        if (PIPE)
+          { input  = stdin;
+            output = stdout;
+            pwd    = NULL;
+            root   = Strdup("Standard Input","Allocaing string");
+          }
+        else
+          { pwd   = PathTo(argv[i]);
+            root  = Root(argv[i],".dexta");
+            input = Fopen(Catenate(pwd,"/",root,".dexta"),"r");
+            if (input == NULL)
+              exit (1);
+            output = Fopen(Catenate(pwd,"/",root,".fasta"),"w");
+            if (output == NULL)
+              exit (1);
+          }
 
         if (VERBOSE)
           { fprintf(stderr,"Processing '%s' ...\n",root);
