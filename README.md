@@ -3,7 +3,7 @@
 ## _Authors: Gene Myers_
 
 For typeset documentation, examples of use, and design philosophy please go to
-my [blog](https://dazzlerblog.wordpress.com/command-guides/dextractor-commands).
+my [blog](https://dazzlerblog.wordpress.com/command-guides/dextractor-command-guide).
 
 The Dextractor commands allow one to pull exactly and only the information needed for
 assembly and reconstruction from the source .bax.h5 HDF5 files produced by the PacBio
@@ -28,20 +28,20 @@ files between machines is possible.
 The dextract'or takes the .bax.h5 files produced for a given SMRT cell as
 input and:
 
-1. if the -o option is set, then the information needed for Quiver is extracted
-and put in a file named <path>.quiva.  If the -q option is not set, then the
-sequence of each read is placed in a file named <path>.fasta, otherwise a
+a. if the -o option is set, then the information needed for Quiver is extracted
+and put in a file named \<path\>.quiva.  If the -q option is not set, then the
+sequence of each read is placed in a file named \<path\>.fasta, otherwise a
 .fastq file of the sequence and the imputed "quality values" for each base in
-the sequence is placed in a file named <path>.fastq.  We personally do not
+the sequence is placed in a file named \<path\>.fastq.  We personally do not
 find these values useful and so never set -q but we give you the option in
 case your downstream processes use such values.
 
-  If <path> is missing, then the path of the first .bax.h5 file is used for the
+  If \<path\> is missing, then the path of the first .bax.h5 file is used for the
   output file name, less any suffixes which are replaced by .fasta and .quiva.
   E.G., the call "dextract -o EColi.1.bax.h5 EColi.2.bax.h5 Ecoli.3.bax.h5"
   will result in the files EColi.fasta and Ecoli.quiva.
 
-2. if the -o option is not set, then if the -q option is also not set, then a
+b. if the -o option is not set, then if the -q option is also not set, then a
 .fasta file of the sequence of each read is written to the standard output.
 Otherwise a .fastq file is written to the standard output.
 
@@ -97,6 +97,4 @@ To compile the programs you must have the HDF5 library installed on your system 
 the library and include files for said must be on the appropriate search paths.  The
 HDR5 library in turn depends on the presence of zlib, so make sure it is also installed
 on your system.  The most recent version of the source for the HDF5 library can be
-obtained at:
-
-    http://www.hdfgroup.org/HDF5/release/obtainsrc.html
+obtained [here](http://www.hdfgroup.org/HDF5/release/obtainsrc.htm)
