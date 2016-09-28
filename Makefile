@@ -34,4 +34,4 @@ install:
 
 package:
 	make clean
-	tar -zcf dextract.tar.gz README Makefile *.h *.c
+	tar -zcf dextract.tar.gz README.md Makefile *.h *.c
