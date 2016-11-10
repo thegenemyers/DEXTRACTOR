@@ -174,12 +174,11 @@ Builds an initial data base, or adds to an existing database, *directly* from ei
 or (b) the list of PacBio source files in \<file\> if the -f option is used.
 
 On the first call to dex2DB, that creates the database, then the settings of the
--a and -q flags, determine the type of the DB as follows.
-If the -a option is set, then Arrow information is added to the DB and the DB is an
-Arrow-DB (A-DB).  
-If the -q option is set, then Quiver information is added to the DB and the DB is an
-Quiver-DB (Q-DB).  
-If neither flag is set, then the DB is a simple Sequence-DB (S-DB).  One can never specify
+-a and -q flags, determine the type of the DB as follows.  If the -a option is set,
+then Arrow information is added to the DB and the DB is an Arrow-DB (A-DB).  If
+the -q option is set, then Quiver information is added to the DB and the DB is a
+Quiver-DB (Q-DB).  If neither flag is set, then the DB is a simple Sequence-DB (S-DB).
+One can never specify
 both the -a and the -q flags together.
 After the first additions to the database, the settings of the -a and -q flags must be
 consistent with the type of the database call, or left unset in which case the type
