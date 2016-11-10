@@ -1,9 +1,10 @@
 /*******************************************************************************************
  *
- *  Uncompresses a .dexta file (2-bit per base compression) back to a .fasta file
+ *  Uncompresses a .dexar file (2-bit per pulse width compression) back to an .arrow file
  *
  *  Author:  Gene Myers
- *  Date  :  January 12, 2014
+ *  Date  :  October 12, 2016
+ *
  ********************************************************************************************/
 
 #include <stdlib.h>
@@ -15,7 +16,7 @@
 
 #include "DB.h"
 
-static char *Usage = "[-vkU] [-w<int(80)>] ( -i | <path:dexta> ... )";
+static char *Usage = "[-vk] [-w<int(80)>] ( -i | <path:dexar> ... )";
 
 #define MAX_BUFFER 100000
 
@@ -45,7 +46,6 @@ static void flip_short(void *w)
 int main(int argc, char *argv[])
 { int     VERBOSE;
   int     KEEP;
-  int     UPPER;
   int     WIDTH;
   int     PIPE;
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     int  flags[128];
     char *eptr;
 
-    ARG_INIT("undexta")
+    ARG_INIT("undexar")
 
     WIDTH   = 80;
 
@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
       if (argv[i][0] == '-')
         switch (argv[i][1])
         { default:
-            ARG_FLAGS("vkiU")
+            ARG_FLAGS("vki")
             break;
           case 'w':
             ARG_NON_NEGATIVE(WIDTH,"Line width")
@@ -74,7 +74,6 @@ int main(int argc, char *argv[])
 
     VERBOSE = flags['v'];
     KEEP    = flags['k'];
-    UPPER   = flags['U'];
     PIPE    = flags['i'];
 
     if ((PIPE && argc > 1) || (!PIPE && argc <= 1))
@@ -109,11 +108,11 @@ int main(int argc, char *argv[])
           }
         else
           { pwd   = PathTo(argv[i]);
-            root  = Root(argv[i],".dexta");
-            input = Fopen(Catenate(pwd,"/",root,".dexta"),"r");
+            root  = Root(argv[i],".dexar");
+            input = Fopen(Catenate(pwd,"/",root,".dexar"),"r");
             if (input == NULL)
               exit (1);
-            output = Fopen(Catenate(pwd,"/",root,".fasta"),"w");
+            output = Fopen(Catenate(pwd,"/",root,".arrow"),"w");
             if (output == NULL)
               exit (1);
           }
@@ -124,7 +123,7 @@ int main(int argc, char *argv[])
           }
 
         { char *name;
-          int   well, flip, newv;
+          int   well, flip;
 
           // Read endian key and short name common to all headers
 
@@ -132,24 +131,12 @@ int main(int argc, char *argv[])
 
             if (fread(&half,sizeof(uint16),1,input) != 1)
               SYSTEM_ERROR
-            if (half == 0x33cc)
-              { flip = 0;
-                newv = 0;
-              }
-            else if (half == 0xcc33)
-              { flip = 1;
-                newv = 0;
-              }
-            else if (half == 0x55aa)
-              { flip = 0;
-                newv = 1;
-              }
+            if (half == 0x55aa)
+              flip = 0;
             else if (half == 0xaa55)
-              { flip = 1;
-                newv = 1;
-              }
+              flip = 1;
             else
-              { fprintf(stderr,"%s: Not a .dexta file, endian key invalid\n",Prog_Name);
+              { fprintf(stderr,"%s: Not a .dexar file, endian key invalid\n",Prog_Name);
                 exit (1);
               }
 
@@ -168,14 +155,15 @@ int main(int argc, char *argv[])
 
           well = 0;
           while (1)
-            { int    rlen, beg, end, qv;
+            { int    rlen, beg, end, x;
+              float  snr[4];
+              uint16 cnr[4];
               int    clen;
               uint8  byte;
 
               //  Read and decompress header and output
 
-              if (fread(&byte,1,1,input) < 1)
-                break;
+              if (fread(&byte,1,1,input) < 1) break;
               while (byte == 255)
                 { well += 255;
                   if (fread(&byte,1,1,input) != 1)
@@ -183,58 +171,32 @@ int main(int argc, char *argv[])
                 }
               well += byte;
 
-              if (newv)
-                if (flip)
-                  { if (fread(&beg,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
-                    flip_long(&beg);
-                    if (fread(&end,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
-                    flip_long(&end);
-                    if (fread(&qv,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
-                    flip_long(&qv);
-                  }
-                else
-                  { if (fread(&beg,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
-                    if (fread(&end,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
-                    if (fread(&qv,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
-                  }
+              if (flip)
+                { if (fread(&beg,sizeof(int),1,input) != 1)
+                    SYSTEM_ERROR
+                  flip_long(&beg);
+                  if (fread(&end,sizeof(int),1,input) != 1)
+                    SYSTEM_ERROR
+                  flip_long(&end);
+                  if (fread(cnr,sizeof(uint16),4,input) != 4)
+                    SYSTEM_ERROR
+                  for (x = 0; x < 4; x++)
+                    flip_short(cnr+x);
+                }
               else
-                if (flip)
-                  { uint16 half;
+                { if (fread(&beg,sizeof(int),1,input) != 1)
+                    SYSTEM_ERROR
+                  if (fread(&end,sizeof(int),1,input) != 1)
+                    SYSTEM_ERROR
+                  if (fread(cnr,sizeof(uint16),4,input) != 4)
+                    SYSTEM_ERROR
+                }
 
-                    if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
-                    flip_short(&half);
-                    beg = half;
-                    if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
-                    flip_short(&half);
-                    end = half;
-                    if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
-                    flip_short(&half);
-                    qv = half;
-                  }
-                else
-                  { uint16 half;
+              for (x = 0; x < 4; x++)
+                snr[x] = cnr[x]/100.;
 
-                    if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
-                    beg = half;
-                    if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
-                    end = half;
-                    if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
-                    qv = half;
-                  }
-
-              fprintf(output,"%s/%d/%d_%d RQ=0.%d\n",name,well,beg,end,qv);
+              fprintf(output,"%s/%d/%d_%d SN=%.2f,%.2f,%.2f,%.2f\n",name,well,beg,end,
+                                                                    snr[0],snr[1],snr[2],snr[3]);
 
               //  Read compressed sequence (into buffer big enough for uncompressed sequence)
               //  Uncompress and output WIDTH symbols to a line
@@ -250,10 +212,7 @@ int main(int argc, char *argv[])
                     SYSTEM_ERROR
                 }
               Uncompress_Read(rlen,read);
-              if (UPPER)
-                Upper_Read(read);
-              else
-                Lower_Read(read);
+              Letter_Arrow(read);
 
               { int j;
 
@@ -269,7 +228,7 @@ int main(int argc, char *argv[])
         }
 
         if (!KEEP)
-          unlink(Catenate(pwd,"/",root,".dexta"));
+          unlink(Catenate(pwd,"/",root,".dexar"));
         free(root);
         free(pwd);
 

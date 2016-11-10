@@ -1,490 +1,205 @@
 /*******************************************************************************************
  *
- *  Dextractor: pullls requested info out of .bax.h5 files produced by Pacbio
- *
- *
- *  Author:  Martin Pippel
- *  Date  :  Dec 12, 2013
+ *  Dextract: pullls requested info out of subreads.[bs]am and .bax.h5 files produced by
+ *               Pacbio sequencing instruments and software
  *
  *  Author:  Gene Myers
- *  Date:    Jan 8, 2014, redesign of the modes of operation and flags, and also the
- *               logic for extraction in writeBaxReads
+ *  Date  :  Oct. 9, 2016
  *
  ********************************************************************************************/
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <math.h>
 #include <ctype.h>
-#include <sys/stat.h>
-
-#include <hdf5.h>
 
 #include "DB.h"
+#include "sam.h"
+#include "bax.h"
+#include "expr.h"
 
 #define LOWER_OFFSET 32
 #define PHRED_OFFSET 33
 
-static char *Usage = "[-vq] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax_h5> ...";
+static char *Usage = "[-vfaq] [-o[<path>]] [-e<expr(ln>=500 && rq>=750)> <input:pacbio> ...";
 
-#define DEXTRACT
+  //  Write subreads s from bax data set b to non-NULL file types
 
-// Exception codes
+static void writeSubread(BaxData *b, SubRead *s, FILE *fas, FILE *arr, FILE* qvs)
+{ int ibeg, iend, roff, len;
 
-#define CANNOT_OPEN_BAX_FILE   1
-#define BAX_BASECALL_ERR       2
-#define BAX_DEL_ERR            3
-#define BAX_TAG_ERR            4
-#define BAX_INS_ERR            5
-#define BAX_MRG_ERR            6
-#define BAX_SUB_ERR            7
-#define BAX_QV_ERR             8
-#define BAX_NR_EVENTS_ERR      9
-#define BAX_REGION_ERR        10
-#define BAX_HOLESTATUS_ERR    11
+  ibeg = s->fpulse;
+  iend = s->lpulse;
+  roff = s->data_off + ibeg;
+  len  = iend - ibeg;
 
-typedef struct
-  { char   *fullName;      // full file path
-    char   *shortName;     // without path and file extension (used in header line)
-    int     fastq;         // if non-zero produce a fastq file instead of a fasta file
-    int     quivqv;        // if non-zero produce a quiv file
+  if (arr != NULL)  //  .arrow
+    { int     a;
+      uint16 *pulse;
+      float  *snr;
 
-    hsize_t numBP;         // sum of all raw read lengths
-    char   *baseCall;      // 7 streams that may be extracted dependent on flag settings
-    char   *delQV;
-    char   *delTag;
-    char   *insQV;
-    char   *mergeQV;
-    char   *subQV;
-    char   *fastQV;
+      pulse = b->pulseW + roff;
+      snr   = b->snrVec + 4*s->zmw_off;
 
-    hsize_t numZMW;        // number of wells/holes
-    int    *readLen;       // length of each read in events
-    char   *holeType;      // Hole type, only SEQUENCING holes are extracted
+      fprintf(arr,">%s SN=%.2f",b->movieName,snr[b->chan[0]]);
+      for (a = 1; a < 4; a++)
+        fprintf(arr,",%.2f",snr[b->chan[a]]);
+      fprintf(arr,"\n");
 
-    hsize_t numHQR;        // number of regions
-    int    *regions;       // region information (5 ints per entry)
-
-    int     delLimit;     //  The Del QV associated with N's in the Del Tag
-
-  } BaxData;
-
-//  Initialize *the* BaxData structure
-
-static void initBaxData(BaxData *b, int fastq, int quivqv)
-{ b->fullName  = NULL;
-  b->shortName = NULL;
-  b->fastq     = fastq;
-  b->quivqv    = quivqv;
-  b->baseCall  = NULL;
-  b->delQV     = NULL;
-  b->delTag    = NULL;
-  b->insQV     = NULL;
-  b->mergeQV   = NULL;
-  b->subQV     = NULL;
-  b->fastQV    = NULL;
-  b->readLen   = NULL;
-  b->holeType  = NULL;
-  b->regions   = NULL;
-  b->delLimit  = 0;
-}
-
-//  Record the names of the next bax file and reset the memory buffer high-water mark
-
-static void initBaxNames(BaxData *b, char *fname, char *hname)
-{ b->fullName  = fname;
-  b->shortName = hname;
-  b->numBP     = 0;
-  b->numZMW    = 0;
-  b->numHQR    = 0;
-}
-
-//  Check if memory needed is above highwater mark, and if so allocate
-
-static void ensureBases(BaxData *b, hsize_t len)
-{ static hsize_t smax = 0;
-
-  b->numBP = len;
-  if (smax < len)
-    { smax = 1.2*len + 10000;
-      b->baseCall = (char *) Realloc(b->baseCall, smax, "Allocating basecall vector");
-      if (b->fastq)
-        b->fastQV = (char *) Realloc(b->fastQV, smax, "Allocating fastq vector");
-      if (b->quivqv)
-        { b->delQV   = (char *) Realloc(b->delQV, 5ll*smax, "Allocating 5 QV vectors");
-          b->delTag  = b->delQV   + smax;
-          b->insQV   = b->delTag  + smax;
-          b->mergeQV = b->insQV   + smax;
-          b->subQV   = b->mergeQV + smax;
+      for (a = 0; a < len; a++)
+        { if (pulse[a] >= 4)
+            fputc('4',arr);
+          else
+            fputc(pulse[a]+'0',arr);
+          if (a % 80 == 79)
+            fputc('\n',arr);
         }
-    }
-}
-
-static void ensureZMW(BaxData *b, hsize_t len)
-{ static hsize_t smax = 0;
-
-  b->numZMW = len;
-  if (smax < len)
-    { smax = 1.2*len + 10000;
-      b->holeType = (char *) Realloc(b->holeType, smax, "Allocating hole vector");
-      b->readLen  = (int *) Realloc(b->readLen , smax * sizeof(int), "Allocating event vector");
-    }
-}
-
-static void ensureHQR(BaxData *b, hsize_t len)
-{ static hsize_t smax = 0;
-
-  b->numHQR = len;
-  if (smax < len)
-    { smax = 1.2*len + 10000;
-      b->regions = (int *) Realloc(b->regions, (5ll*smax+1)*sizeof(int), "Allocating region vector");
-    }
-}
-
-// Fetch the relevant contents of the current bax.h5 file and return the H5 file id.
-
-static int getBaxData(BaxData *b)
-{ hid_t   field_space;
-  hid_t   field_set;
-  hsize_t field_len[2];
-  hid_t   file_id;
-  herr_t  stat;
-  int     ecode;
-
-  H5Eset_auto(H5E_DEFAULT,0,0); // silence hdf5 error stack
-
-  file_id = H5Fopen(b->fullName, H5F_ACC_RDONLY, H5P_DEFAULT);
-  if (file_id < 0)
-    return (CANNOT_OPEN_BAX_FILE);
-
-#ifdef DEBUG
-  printf("PROCESSING %s, file_id: %d\n", baxFileName, file_id);
-#endif
-
-#define GET_SIZE(path,error)									\
-  { ecode = error;										\
-    if ((field_set = H5Dopen2(file_id, path, H5P_DEFAULT)) < 0) goto exit0;			\
-    if ((field_space = H5Dget_space(field_set)) < 0) goto exit1;				\
-    H5Sget_simple_extent_dims(field_space, field_len, NULL);					\
-  }
-
-#define FETCH(field,type)									\
-  { stat = H5Dread(field_set, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, b->field);			\
-    H5Sclose(field_space);									\
-    H5Dclose(field_set);									\
-    if (stat < 0) goto exit0;									\
-  }
-
-#define CHECK_FETCH(path,error,field,type,cntr)							\
-  { GET_SIZE(path,error)									\
-    if (b->cntr != field_len[0]) goto exit2;							\
-    FETCH(field,type)										\
-  }
-
-  GET_SIZE("/PulseData/BaseCalls/Basecall",BAX_BASECALL_ERR)
-  ensureBases(b,field_len[0]);
-  FETCH(baseCall,H5T_NATIVE_UCHAR)
-  if (b->fastq)
-    CHECK_FETCH("/PulseData/BaseCalls/QualityValue",BAX_QV_ERR,fastQV,H5T_NATIVE_UCHAR,numBP)
-  if (b->quivqv)
-    { CHECK_FETCH("/PulseData/BaseCalls/DeletionQV",    BAX_DEL_ERR,delQV,  H5T_NATIVE_UCHAR,numBP)
-      CHECK_FETCH("/PulseData/BaseCalls/DeletionTag",   BAX_TAG_ERR,delTag, H5T_NATIVE_UCHAR,numBP)
-      CHECK_FETCH("/PulseData/BaseCalls/InsertionQV",   BAX_INS_ERR,insQV,  H5T_NATIVE_UCHAR,numBP)
-      CHECK_FETCH("/PulseData/BaseCalls/MergeQV",       BAX_MRG_ERR,mergeQV,H5T_NATIVE_UCHAR,numBP)
-      CHECK_FETCH("/PulseData/BaseCalls/SubstitutionQV",BAX_SUB_ERR,subQV,  H5T_NATIVE_UCHAR,numBP)
+      if (a % 80 != 80)
+        fputc('\n',arr);
     }
 
-  GET_SIZE("/PulseData/BaseCalls/ZMW/HoleStatus",BAX_HOLESTATUS_ERR)
-  ensureZMW(b,field_len[0]);
-  FETCH(holeType,H5T_NATIVE_UCHAR)
-  CHECK_FETCH("/PulseData/BaseCalls/ZMW/NumEvent",BAX_NR_EVENTS_ERR,readLen,H5T_NATIVE_INT,numZMW)
+  if (fas != NULL)   //   .fasta
+    { int   a;
+      char *baseCall;
 
-  GET_SIZE("/PulseData/Regions",BAX_REGION_ERR)
-  ensureHQR(b,field_len[0]);
-  FETCH(regions,H5T_NATIVE_INT)
+      baseCall = b->baseCall + roff;
 
-  //  Find the Del QV associated with N's in the Del Tag
+      fprintf(fas,">%s/%d/%d_%d RQ=0.%0d\n",b->movieName,s->well,ibeg,iend,s->qv);
 
-  if (b->quivqv)
-    { hsize_t  i;
-  
-      for (i = 0; i < b->numBP; i++)
-        if (b->delTag[i] == 'N')
-          { b->delLimit = b->delQV[i];
-            break;
-          }
+      if (isupper(baseCall[ibeg]))
+        for (a = 0; a < len; a++)
+          baseCall[a] += LOWER_OFFSET;
+
+      for (a = 0; a < len; a += 80)
+        if (a+80 > len)
+          fprintf(fas,"%.*s\n", len-a, baseCall + a);
+        else
+          fprintf(fas,"%.80s\n", baseCall + a);
     }
 
-  return (0);
+  if (qvs != NULL)    //   .quiva
+    { int   a, d;
+      char *delQV, *delTag, *insQV, *mergeQV, *subQV;
 
-exit2:
-  H5Sclose(field_space);
-exit1:
-  H5Dclose(field_set);
-exit0:
-  H5Fclose(file_id);
-  return (ecode);
-}
+      delQV   = b->delQV + roff;
+      delTag  = b->delTag + roff;
+      insQV   = b->insQV + roff;
+      mergeQV = b->mergeQV + roff;
+      subQV   = b->subQV + roff;
 
-// Find the good read invervals of the baxfile b(FileID), output the reads of length >= minLen and
-//   score >= minScore to output (for the fasta or fastq part) and qvquiv (if b->quivqv is set)
+      fprintf(qvs,"@%s/%d/%d_%d RQ=0.%0d\n",b->movieName,s->well,ibeg,iend,s->qv);
 
-static char *fasta_header = ">%s/%d/%d_%d RQ=0.%d\n";
-static char *fastq_header = "@%s/%d/%d_%d RQ=0.%d\n";
+      if (isupper(delTag[ibeg]))
+        for (a = 0; a < len; a++)
+          delTag[a] += LOWER_OFFSET;
+      d = b->delLimit;
+      if (isupper(d))
+        d += LOWER_OFFSET;
 
-static void writeBaxReads(BaxData *b, int minLen, int minScore, FILE *output, FILE* qvquiv)
-{ int   nreads, *rlen;
-  int   roff, *hlen, *cur, h, w;
-  int   tolower;
-  char *header;
-
-  char   *baseCall;
-  char   *delQV;
-  char   *delTag;
-  char   *insQV;
-  char   *mergeQV;
-  char   *subQV;
-  char   *fastQV;
-
-  baseCall = b->baseCall;
-  delQV    = b->delQV;
-  delTag   = b->delTag;
-  insQV    = b->insQV;
-  mergeQV  = b->mergeQV;
-  subQV    = b->subQV;
-  fastQV   = b->fastQV;
-
-#ifdef DEBUG
-  printf("printSubreadFields\n");
-#endif
-
-#define HOLE   0
-#define TYPE   1
-#define    ADAPTER_REGION 0
-#define    INSERT_REGION  1
-#define    HQV_REGION     2
-#define START  2
-#define FINISH 3
-#define SCORE  4
-
-  //  Find the HQV regions and output as reads according to the various output options
-
-  tolower = isupper(b->baseCall[0]);
-  if (b->fastq)
-    header = fastq_header;
-  else
-    header = fasta_header;
-
-  rlen    = b->readLen;
-  roff    = 0;
-  cur     = b->regions;
-  nreads  = b->numZMW + cur[HOLE];
-  hlen    = rlen - cur[HOLE];
-  cur[5*b->numHQR] = nreads; 
-
-  for (h = cur[HOLE], w = 0; h < nreads; h++, w++)
-    { int *bot, *top, *hqv, *r;
-      int hbeg, hend, qv;
-      int ibeg, iend;
-
-      if (hlen[h] >= minLen)
-        { while (cur[HOLE] < h)
-            cur += 5;
-          bot = hqv = cur;
-          while (cur[HOLE] <= h)
-            { if (cur[TYPE] == HQV_REGION)
-                hqv = cur;
-              cur += 5;
-            }
-          top = cur-5;
-
-          qv = hqv[SCORE];
-          if (qv >= minScore)
-            { hbeg = hqv[START];
-              hend = hqv[FINISH];
-              for (r = bot; r <= top; r += 5)
-                { if (r[TYPE] != INSERT_REGION)
-                    continue;
-
-                  ibeg = r[START];
-                  iend = r[FINISH];
-
-                  if (ibeg < hbeg)
-                    ibeg = hbeg;
-                  if (iend > hend)
-                    iend = hend;
-                  if (iend - ibeg < minLen || b->holeType[w] > 0)
-                    continue;
-
-                  fprintf(output,header,b->shortName,h,ibeg,iend,qv);
-
-                  ibeg += roff;
-                  iend += roff;
-
-                  if (tolower)
-                    { int a;
-
-                      for (a = ibeg; a < iend; a++)
-                        baseCall[a] += LOWER_OFFSET;
-                      if (b->quivqv)
-                        for (a = ibeg; a < iend; a++)
-                          delTag[a] += LOWER_OFFSET;
-                    }
-
-                  if (b->fastq)
-                    { int a;
-
-                      fprintf(output,"%.*s\n", iend-ibeg, baseCall + ibeg);
-                      fprintf(output,"+\n");
-                      for (a = ibeg; a < iend; a++)
-                        fputc(fastQV[a]+PHRED_OFFSET,output);
-                      fputc('\n',output);
-                    }
-                  else
-                    { int a;
-
-                      for (a = ibeg; a < iend; a += 80)
-                        if (a+80 > iend)
-                          fprintf(output,"%.*s\n", iend-a, baseCall + a);
-                        else
-                          fprintf(output,"%.80s\n", baseCall + a);
-                    }
-
-                  if (b->quivqv)
-                    { int a, d;
-
-                      fprintf(qvquiv,"@%s/%d/%d_%d RQ=0.%d\n",
-                                     b->shortName,h,ibeg-roff,iend-roff,qv);
-
-                      d = b->delLimit;
-                      for (a = ibeg; a < iend; a++)
-                        { if (delQV[a] == d)
-                            delTag[a] = 'n';
-                          delQV[a]   += PHRED_OFFSET;
-                          insQV[a]   += PHRED_OFFSET;
-                          mergeQV[a] += PHRED_OFFSET;
-                          subQV[a]   += PHRED_OFFSET;
-                        }
-
-                      iend -= ibeg;
-                      fprintf (qvquiv, "%.*s\n", iend, delQV + ibeg);
-                      fprintf (qvquiv, "%.*s\n", iend, delTag + ibeg);
-                      fprintf (qvquiv, "%.*s\n", iend, insQV + ibeg);
-                      fprintf (qvquiv, "%.*s\n", iend, mergeQV + ibeg);
-                      fprintf (qvquiv, "%.*s\n", iend, subQV + ibeg);
-                    }
-                }
-            }
+      for (a = 0; a < len; a++)
+        { if (delQV[a] == d)
+            delTag[a] = 'n';
+          if (delQV[a] > 93)
+            delQV[a] = 126;
+          else
+            delQV[a] += PHRED_OFFSET;
+          if (insQV[a] > 93)
+            insQV[a] = 126;
+          else
+            insQV[a] += PHRED_OFFSET;
+          if (mergeQV[a] > 93)
+            mergeQV[a] = 126;
+          else
+            mergeQV[a] += PHRED_OFFSET;
+          if (subQV[a] > 93)
+            subQV[a] = 126;
+          else
+            subQV[a] += PHRED_OFFSET;
         }
-      roff += hlen[h];
+
+      fprintf (qvs, "%.*s\n", len, delQV);
+      fprintf (qvs, "%.*s\n", len, delTag);
+      fprintf (qvs, "%.*s\n", len, insQV);
+      fprintf (qvs, "%.*s\n", len, mergeQV);
+      fprintf (qvs, "%.*s\n", len, subQV);
     }
 }
 
-//  Print an error message
+  //  Write subread data in samRecord rec to non-NULL file types
 
-static void printBaxError(int ecode)
-{ fprintf(stderr,"  *** Warning ***: ");
-  switch (ecode)
-    { case CANNOT_OPEN_BAX_FILE:
-        fprintf(stderr,"Cannot open bax file:\n");
-        break;
-      case BAX_BASECALL_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/Basecall from file:\n");
-        break;
-      case BAX_DEL_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/DeletionQV from file:\n");
-        break;
-      case BAX_TAG_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/DeletionTag from file:\n");
-        break;
-      case BAX_INS_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/InsertionQV from file:\n");
-        break;
-      case BAX_MRG_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/MergeQV from file:\n");
-        break;
-      case BAX_SUB_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/SubstitutionQV from file:\n");
-        break;
-      case BAX_QV_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/QualityValue from file:\n");
-        break;
-      case BAX_NR_EVENTS_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/ZMW/NumEvent from file:\n");
-        break;
-      case BAX_REGION_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/Regions from file:\n");
-        break;
-      case BAX_HOLESTATUS_ERR:
-        fprintf(stderr,"Cannot parse /PulseData/BaseCalls/ZMW/HoleStatus from file:\n");
-        break;
-      default: 
-        fprintf(stderr,"Cannot parse bax file:\n");
-        break;
+static void writeSamRecord(samRecord *rec, FILE *fas, FILE *arr, FILE* qvs)
+{ int i;
+
+  if (fas != NULL)
+    { fprintf(fas,">%s/%d/%d_%d RQ=0.%d\n",rec->header,rec->well,rec->beg,
+                                               rec->end,(int) (rec->qual*1000.));
+      for (i = 0; i < rec->len; i += 80)
+        if (i+80 <= rec->len)
+          fprintf(fas,"%.80s\n",rec->seq+i);
+        else
+          fprintf(fas,"%.*s\n",rec->len-i,rec->seq+i);
     }
-  fflush(stderr);
+
+  if (arr != NULL)
+    { fprintf(arr,">%s SN=%.2f,%.2f,%.2f,%.2f\n",rec->header,
+                      rec->snr[0],rec->snr[1],rec->snr[2],rec->snr[3]);
+      for (i = 0; i < rec->len; i += 80)
+        if (i+80 <= rec->len)
+          fprintf(arr,"%.80s\n",rec->arr+i);
+        else
+          fprintf(arr,"%.*s\n",rec->len-i,rec->arr+i);
+    }
+
+  if (qvs != NULL)
+    { fprintf(qvs,">%s/%d/%d_%d RQ=0.%d\n",rec->header,rec->well,rec->beg,
+                                               rec->end,(int) (rec->qual*1000.));
+      fprintf(qvs,"%.*s\n",rec->len,rec->qv[0]);
+      fprintf(qvs,"%.*s\n",rec->len,rec->qv[1]);
+      fprintf(qvs,"%.*s\n",rec->len,rec->qv[2]);
+      fprintf(qvs,"%.*s\n",rec->len,rec->qv[3]);
+      fprintf(qvs,"%.*s\n",rec->len,rec->qv[4]);
+    }
 }
 
-//  Free *the* bax data structure
-
-static void freeBaxData(BaxData *b)
-{ free(b->baseCall);
-  free(b->delQV);
-  free(b->fastQV);
-  free(b->holeType);
-  free(b->readLen);
-  free(b->regions);
-}
+  //  Main
 
 int main(int argc, char* argv[])
 { char *output;
-  FILE *fileOut;
-  FILE *fileQuiv;
+  char *path, *core;
+  FILE *fileFas;
+  FILE *fileArr;
+  FILE *fileQvs;
 
-  int FASTQ;
-  int QUIVQV;
-  int MIN_LEN;
-  int MIN_SCORE;
-  int VERBOSE;
+  int     ARROW;
+  int     QUIVA;
+  int     FASTA;
+  int     VERBOSE;
+  Filter *EXPR;
 
-  BaxData b;
-
-  //  Check that zlib library is present
-
-  if ( ! H5Zfilter_avail(H5Z_FILTER_DEFLATE))
-    { fprintf(stderr,"%s: zlib library is not present, check build/installation\n",Prog_Name);
-      exit (1);
-    }
+  //  Process command line arguments
 
   { int   i, j, k;
     int   flags[128];
-    char *eptr;
 
     ARG_INIT("dextract")
 
-    MIN_LEN   = 500;
-    MIN_SCORE = 750;
-    QUIVQV    = 0;
-    output    = NULL;
+    path   = NULL;
+    core   = NULL;
+    output = NULL;
+    EXPR   = NULL;
 
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
         switch (argv[i][1])
         { default:
-            ARG_FLAGS("qv")
-            break;
-          case 's':
-            ARG_NON_NEGATIVE(MIN_SCORE,"Subread score threshold")
-            break;
-          case 'l':
-            ARG_NON_NEGATIVE(MIN_LEN,"Minimum length threshold")
+            ARG_FLAGS("vfaq")
             break;
           case 'o':
-            QUIVQV = 1;
             output = argv[i]+2;
+            break;
+          case 'e':
+            EXPR = parse_filter(argv[i]+2);
             break;
         }
       else
@@ -492,7 +207,14 @@ int main(int argc, char* argv[])
     argc = j;
 
     VERBOSE = flags['v'];
-    FASTQ   = flags['q'];
+    ARROW   = flags['a'];
+    QUIVA   = flags['q'];
+    FASTA   = flags['f'];
+    if ( ! (ARROW || FASTA || QUIVA))
+      FASTA = 1;
+
+    if (EXPR == NULL)
+      EXPR = parse_filter("ln>=500 && rq>=750");
 
     if (argc == 1)
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
@@ -500,95 +222,257 @@ int main(int argc, char* argv[])
       }
   }
 
-  fileQuiv = NULL;
-  if (QUIVQV)
-    { int explicit;
+  //  If -o set then set up output file streams
 
-      explicit = (*output != '\0');
-      if ( ! explicit)
-        output = Root(argv[1],NULL);
+  fileFas = NULL;
+  fileArr = NULL;
+  fileQvs = NULL;
+  if (output != NULL)
+    { if (*output != '\0')
+        { output = Root(output,NULL);
 
-      if (FASTQ)
-        fileOut = Fopen(Catenate("","",output,".fastq"), "w");
+          if (FASTA)
+            { fileFas = Fopen(Catenate("","",output,".fasta"), "w");
+              if (fileFas == NULL)
+                goto error;
+            }
+          if (ARROW)
+            { fileArr = Fopen(Catenate("","",output,".arrow"), "w");
+              if (fileArr == NULL)
+                goto error;
+            }
+          if (QUIVA)
+            { fileQvs = Fopen(Catenate("","",output,".quiva"), "w");
+              if (fileQvs == NULL)
+                goto error;
+            }
+        }
       else
-        fileOut = Fopen(Catenate("","",output,".fasta"), "w");
-      fileQuiv = Fopen(Catenate("","",output,".quiva"), "w");
-      if (fileOut == NULL || fileQuiv == NULL)
-        exit (1);
-
-      if (explicit)
-        output = Root(output,NULL);
-    }
-  else
-    fileOut = stdout;
-
-  if (VERBOSE)
-    { fprintf(stderr, "Minimum length: %d\n", MIN_LEN);
-      fprintf(stderr, "Minimum score : %d\n", MIN_SCORE);
-    }
-
-  initBaxData(&b,FASTQ,QUIVQV);
-
-  { int i;
-
-    for (i = 1; i < argc; i++)
-      { char *root, *full, *input;
-        int   ecode;
-
-        { char *pwd;
-          FILE *in;
-
-          pwd   = PathTo(argv[i]);
-          root  = Root(argv[i],".bax.h5");
-          full  = Strdup(Catenate(pwd,"/",root,".bax.h5"),"Allocating full name");
-          input = Root(argv[i],NULL);
-          
-          free(pwd);
-
-          if ((in = fopen(full,"r")) == NULL)
-            { fprintf(stderr,"%s: Cannot find %s !\n",Prog_Name,input);
+        { if (ARROW + FASTA + QUIVA > 1)
+            { fprintf(stderr,"%s: Cannot send more than one stream to standard output\n",
+                             Prog_Name);
               exit (1);
             }
-          else
-            fclose(in);
-	}
+          if (FASTA)
+            fileFas = stdout;
+          if (ARROW)
+            fileArr = stdout;
+          if (QUIVA)
+            fileQvs = stdout;
+        }
+    }
+ 
+  //  Process each input file
 
-        if (QUIVQV)
-          initBaxNames(&b,full,output);
+  { int      i;
+    BaxData  b, *bp = &b;
+    samFile *in;
+
+    initBaxData(bp,0,QUIVA,ARROW);
+
+    for (i = 1; i < argc; i++)
+      { FILE *file;
+        int   status, intype;
+
+        //  Determine file type
+
+#define IS_BAX 0
+#define IS_BAM 1
+#define IS_SAM 2
+
+        path  = PathTo(argv[i]);
+        core  = Root(argv[i],".subreads.bam");
+        if ((file = fopen(Catenate(path,"/",core,".subreads.bam"),"r")) == NULL)
+          { core  = Root(argv[i],".subreads.sam");
+            if ((file = fopen(Catenate(path,"/",core,".subreads.sam"),"r")) == NULL)
+              { core  = Root(argv[i],".bax.h5");
+                if ((file = fopen(Catenate(path,"/",core,".bax.h5"),"r")) == NULL)
+                  { fprintf(stderr,"%s: Cannot find %s/%s with a Pacbio extension\n",
+                                   Prog_Name,path,core);
+                    goto error;
+                  }
+                intype = IS_BAX;
+              }
+            else
+              intype = IS_SAM;
+          }
         else
-          initBaxNames(&b,full,input);
+          intype = IS_BAM;
+        fclose(file);
+
+        //  If -o not set then setup output file streams for this input
+
+        if (output == NULL)
+          { if (FASTA)
+              { fileFas = Fopen(Catenate(path,"/",core,".fasta"), "w");
+                if (fileFas == NULL)
+                  goto error;
+              }
+            if (ARROW)
+              { fileArr = Fopen(Catenate(path,"/",core,".arrow"), "w");
+                if (fileArr == NULL)
+                  goto error;
+              }
+            if (QUIVA)
+              { fileQvs = Fopen(Catenate(path,"/",core,".quiva"), "w");
+                if (fileQvs == NULL)
+                  goto error;
+              }
+          }
+
+        //  Extract from a .bax.h5
+
+        if (intype == IS_BAX)
+          { SubRead *s;
+
+            if (VERBOSE)
+              { fprintf(stderr, "Fetching file : %s ...\n", core); fflush(stderr); }
+
+            if ((status = getBaxData(bp,Catenate(path,"/",core,".bax.h5"))) != 0)
+              { fprintf(stderr, "%s: ", Prog_Name);
+                printBaxError(status);
+                goto error;
+              }
+
+            if (VERBOSE)
+              { fprintf(stderr, "Extracting subreads ...\n"); fflush(stderr); }
+
+            nextSubread(bp,1);
+            while (1)
+              { s = nextSubread(bp,0);
+                if (s == NULL)
+                  break;
+
+                if ( ! evaluate_bax_filter(EXPR,bp,s))
+                  continue;
+
+                writeSubread(&b,s,fileFas,fileArr,fileQvs);
+              }
+          }
+
+        //  Extract from a .bam or .sam
+
+        else
+          { if (VERBOSE)
+              { fprintf(stderr, "Processing file : %s ...\n", core); fflush(stderr); }
+
+            if (intype == IS_BAM)
+              { if ((in = sam_open(Catenate(path,"/",core,".subreads.bam"))) == NULL)
+                  { fprintf(stderr, "%s: can't open %s as a Bam file\n", Prog_Name, argv[i]);
+                    goto error;
+                  }
+              }
+            else
+              { if ((in = sam_open(Catenate(path,"/",core,".subreads.sam"))) == NULL)
+                  { fprintf(stderr, "%s: can't open %s as a Sam file\n", Prog_Name, argv[i]);
+                    goto error;
+                  }
+              }
+
+            status = sam_header_process(in,0);
+            if (status < 0)
+              goto error;
+            else if ((status & HASPW) == 0 && ARROW)
+              { fprintf(stderr, "%s: %s does not have Arrow information\n", Prog_Name, argv[i]);
+                goto error;
+              }
+            else if ((status & HASQV) == 0 && QUIVA)
+              { fprintf(stderr, "%s: %s does not have Quiver information\n", Prog_Name, argv[i]);
+                goto error;
+              }
+            else
+              { samRecord *rec;
+  
+                while (1)
+                  { rec = sam_record_extract(in, status);
+                    if (rec == NULL)
+                      goto error;
+                    if (rec == SAM_EOF)
+                      break;
+
+                    if ( ! evaluate_bam_filter(EXPR,rec))
+                      continue;
+
+                    writeSamRecord(rec,fileFas,fileArr,fileQvs);
+                  }
+              }
+
+            if (sam_close(in))
+              { fprintf(stderr, "%s: Error closing file %s\n", Prog_Name, core);
+                goto error;
+              }
+          }
+
+        //  If -o not set, close outputs for input file and free name strings
+
+        if (output == NULL)
+          { if (FASTA)
+              fclose(fileFas);
+            if (ARROW)
+              fclose(fileArr);
+            if (QUIVA)
+              fclose(fileQvs);
+            fileFas = NULL;
+            fileQvs = NULL;
+            fileArr = NULL;
+          }
+
+        free(path);
+        free(core);
 
         if (VERBOSE)
-          { fprintf(stderr, "Fetching file : %s ...\n", root); fflush(stderr); }
-
-        if ((ecode = getBaxData(&b)) == 0)
-          { if (VERBOSE)
-              { fprintf(stderr, "Extracting subreads ...\n"); fflush(stderr); }
-            writeBaxReads(&b, MIN_LEN, MIN_SCORE, fileOut, fileQuiv);
-            if (VERBOSE)
-              { fprintf(stderr, "Done\n"); fflush(stdout); }
-          }
-        else
-          { if (VERBOSE)
-              fprintf(stderr, "Skipping due to failure\n"); 
-            else
-              fprintf(stderr, "Skipping %s due to failure\n",root); 
-            printBaxError(ecode);
-          }
-
-        free(root);
-        free(full);
-        free(input);
+          { fprintf(stderr, "Done\n"); fflush(stdout); }
       }
   }
 
-  freeBaxData(&b);
-  if (fileOut != stdout)
-    fclose(fileOut);
-  if (fileQuiv != NULL)
-    fclose(fileQuiv);
-  if (QUIVQV)
-    free(output);
+  //  If -o<name> then close named outputs
+
+  if (output != NULL && *output != '\0')
+    { if (fileFas != NULL)
+        fclose(fileFas);
+      if (fileArr != NULL)
+        fclose(fileArr);
+      if (fileQvs != NULL)
+        fclose(fileQvs);
+      free(output);
+    }
 
   exit (0);
+
+  //  An error occured, carefully undo any files in progress
+
+error:
+  if (output == NULL)
+    { if (fileFas != NULL)
+        { fclose(fileFas);
+          unlink(Catenate(path,"/",core,".fasta"));
+        }
+      if (fileQvs != NULL)
+        { fclose(fileQvs);
+          unlink(Catenate(path,"/",core,".quiva"));
+        }
+      if (fileArr != NULL)
+        { fclose(fileArr);
+          unlink(Catenate(path,"/",core,".arrow"));
+        }
+    }
+  else if (*output != '\0')
+    { if (fileFas != NULL)
+        { fclose(fileFas);
+          unlink(Catenate("","",output,".fasta"));
+        }
+      if (fileQvs != NULL)
+        { fclose(fileQvs);
+          unlink(Catenate("","",output,".quiva"));
+        }
+      if (fileArr != NULL)
+        { fclose(fileArr);
+          unlink(Catenate("","",output,".arrow"));
+        }
+      free(output);
+    }
+  free(path);
+  free(core);
+
+  exit (1);
 }

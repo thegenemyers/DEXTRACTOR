@@ -6,50 +6,95 @@ For typeset documentation, examples of use, and design philosophy please go to
 my [blog](https://dazzlerblog.wordpress.com/command-guides/dextractor-command-guide).
 
 The Dextractor commands allow one to pull exactly and only the information needed for
-assembly and reconstruction from the source .bax.h5 HDF5 files produced by the PacBio
-RS II sequencer.  Generally speaking, this information is the sequence of all the reads
-coded in the .bax.h5 file and a number of quality value (QV) streams needed by Quiver
-to produce a highly accurate consensus sequence as the last step in the assembly
-process.  The Dextractor therefore produces a .fasta file of the sequence of all the
-reads, and a .quiva file containing the QV stream information in a .fastq readable
-format.  For each of these two file types the library contains commands to compress the
-given file type, and to decompress it, which is a reversible process delivering the
-original uncompressed file.  In this way, users of a PacBio can keep the data needed
-for assembly spooled up on disk in 1/14th the space occupied by the .bax.h5 files which
-can be archived to a cheap backup medium such as tape, should the raw data ever need to
-be consulted again (we expect never unless the spooled up data is compromised or lost
-in some way).  The compressor/decompressor pairs are endian-aware so moving compressed
-files between machines is possible.
+assembly and reconstruction from the source HDF5 files produced by the PacBio
+RS II sequencer, or from the source BAM files produced by the PacBio Sequel
+sequencer.  The program **dextract** can pull information from either HDF5 .bax.h5 files
+or BAM/SAM .subreads.[bs]am files, where it determines the file type based on the file
+suffix.  Both file
+formats contain the basic sequence information for each subread and contain either the
+quality streams needed by the Quiver consensus programs, or the pulse width and signal-
+to-noise ratio information needed by the newer Arrow consensus program, or both. 
+Dextract can be directed to pull the sequence information into a .fasta file by
+setting the -f option, to pull the Quiver information (if present) into a .quiva file
+by setting the -q option, and to pull the Arrow information (if present) into a .arrow
+file by setting the -a option.  As detailed in the command description below, the
+program can produce any combination of the three output files (if the information is
+present).
+
+For each of the three extracted file types -- .fasta, .quiva, and .arrow --
+the library contains commands to compress the given file type, and to decompress
+it, which is a reversible process delivering the original uncompressed file.   The
+compressed .fasta files, with the extension .dexta, consume 1/4 byte per base.
+The compressed .quiva files, with the extension .dexqv, consume 1.5 bytes per base on
+average, and the compressed .arrow files, with the extension .dexar, consume 1/4 byte
+per base.  In this way, users can keep just the data needed for assembly spooled up on disk
+in much less space than the source files and keep said source files archived to a cheap
+backup medium such as tape, should the raw data ever need to be consulted again
+(we expect never unless the spooled up data is compromised or lost in some way).
+The compressor/decompressor pairs are endian-aware so moving compressed files between
+machines is possible.
+
+Finally, one can also directly produce a Dazzler database from the source files without
+explicitly extracting the uncompressed file types.  Since a Dazzler database keeps the
+extracted information in compressed form, it is actually recommended that you directly
+build a DB from your source data and then archive the raw data.  Doing so saves time
+and there is no need for any large intermediate .fasta, .quiva, or .arrow files.  But
+we continue to provide dextract and sequel for those who which to build their own
+assembly pipelines and not use our DBs as an organizing principle.
 
 ```
-1. dextract  [-vq] [-o[<path>]] [-l<int(500)>] [-s<int(750)>] <input:bax.h5> ...
+1. dextract [-vfaq] [-o[<path>]] [-e<expr(ln>=500 && rq>=750)>] <input:pacbio> ...
 ```
 
-The dextract'or takes the .bax.h5 files produced for a given SMRT cell as
-input and:
+Dextract takes a series of .bax.h5 or .subreads.[bs]am files as input, and depending on
+the option flags settings producess:
 
-1. if the -o option is set, then the information needed for Quiver is extracted
-and put in a file named \<path\>.quiva.  If the -q option is not set, then the
-sequence of each read is placed in a file named \<path\>.fasta, otherwise a
-.fastq file of the sequence and the imputed "quality values" for each base in
-the sequence is placed in a file named \<path\>.fastq.  We personally do not
-find these values useful and so never set -q but we give you the option in
-case your downstream processes use such values.
+1. (-f) a .fasta file containing subread sequences, each with a "standard" Pacbio header
+consisting of the movie name, well number, pulse range, and read quality value.
 
-  If \<path\> is missing, then the path of the first .bax.h5 file is used for the
-  output file name, less any suffixes which are replaced by .fasta and .quiva.
-  E.G., the call "dextract -o EColi.1.bax.h5 EColi.2.bax.h5 Ecoli.3.bax.h5"
-  will result in the files EColi.fasta and Ecoli.quiva.
+2. (-a) a FASTA format .arrow file containing the pulse width stream for each subread, with
+a header that contains the movie name and the 4 channel SNR values.
 
-2. if the -o option is not set, then if the -q option is also not set, then a
-.fasta file of the sequence of each read is written to the standard output.
-Otherwise a .fastq file is written to the standard output.
+3. (-q) a FASTQ-like .quiva file contining for each subread the same header as the
+.fasta file above, save that it start with an @-sign, followed by the 5 quality
+value streams used by Quiver, one per line, where the order of the streams is:
+deletion QVs, deletion Tags, insertion QVs, substitution QVs, and last merge QVs. 
 
 If the -v option is set then the program reports the processing of each .bax.h5
-file, otherwise it runs silently.  The parameter -l determines the shortest read
-length to be extracted (default 500) and the -s parameter determines the minimum
-quality/score of reads to be extracted (default 750 = 75%).
+file, otherwise it runs silently.  If none of the -f, -a, or -q flags is set, then by
+default -f is assumed.  The destination of the extracted information is controlled
+by the -o parameter as follows:
 
+1. If -o is absent, then for each input file X.bax.h5, dextract will produce X.fasta,
+X.arrow, and/or X.quiva as per the option flags.
+
+2. If -o is present and followed by a path Y, then the concatenation of the output for
+the input files is placed in Y.fasta, Y.arrow, and/or Y.quiva as per the option flags.
+
+3. If -o is present but with no following path, then the output is sent to the standard
+output (to enable a UNIX pipe if desired).  In this case only one of the flags -f, -a,
+or -q can be set.
+
+One can select which subreads are transferred to the output with the -e option that
+contains a C-style boolean expression over integer constants and the 8 variable
+names that for a given subread designate:
+
+```
+zm  - well number
+ln  - length of the subread
+rq  - quality value of the subread (normalized to [0,1000])
+bc1 - # of the first barcode
+bc2 - # of the second barcode
+bq  - quality of the barcode detection (normalized to [0,100])
+np  - number of passes producing subread
+qs  - start pulse of subread
+```
+
+For each subread, the expression is evaluated and the subread is output only if the
+expression is true.
+The default filter is "ln >= 500 && rq >= 750", that is, only subreads longer than
+500bp with a quality score of .75 or better will be output.  If a variable is undefined
+for a subread (e.g. bar codes are often not present), the value of the variable will be -1.
 
 ```
 2. dexta   [-vk] ( -i | <path:fasta> .. .)
@@ -72,13 +117,33 @@ With the -i option set, the programs run as UNIX pipes that take .fasta (.dexta)
 input from the standard input and write .dexta (.fasta) to the standard output.
 In this case the -k option has no effect.
 
+```
+3. dexar   [-vk] ( -i | <path:arrow> .. .)
+   undexar [-vk] [-w<int(80)>] ( -i | <path:dexar> ... )
+```
+
+Dexar compresses a set of .arrow files
+and replaces them with new files with a .dexar extension.  That is,
+submitting G.arrow will result in a compressed image G.dexar, and G.arrow
+will no longer exist.  With the -k option the .arrow source is *not* removed.  If
+-v is set, then the program reports its progress on each file.  Otherwise it runs
+completely silently (good for batch jobs to an HPC cluster).  The compression
+factor is always slightly better than 4.0.  Undexar reverses the compression of
+dexar, replacing the uncompressed image of G.dexar with G.arrow.  By default the
+sequences output by undexar are 80 chars per line.  The characters per line, or
+line width, can be set to any positive value with the -w option
+
+With the -i option set, the programs run as UNIX pipes that take .arrow (.dexar)
+input from the standard input and write .dexar (.arrow) to the standard output.
+In this case the -k option has no effect.
+
 
 ```
-3. dexqv   [-vkl] <path:quiva> ...
+4. dexqv   [-vkl] <path:quiva> ...
    undexqv [-vkU] <path:dexqv> ...
 ```
 
-Dexqv compresses a set of .quiva files (produced by dextract) into new files with a
+Dexqv compresses a set of .quiva files into new files with a
 .dexqv extension.  That is, submitting G.quiva will result in a compressed image
 G.dexqv, and G.quiva will not longer exist.  The -k flag prevents the removal
 of G.quiva.   With -v set progress is reported, otherwise the command runs
@@ -98,3 +163,31 @@ the library and include files for said must be on the appropriate search paths. 
 HDR5 library in turn depends on the presence of zlib, so make sure it is also installed
 on your system.  The most recent version of the source for the HDF5 library can be
 obtained [here](https://support.hdfgroup.org/downloads/index.html).
+
+```
+5. dex2DB [-vlaq] [-e<expr(ln>=500 && rq>=750)>] 
+              <path:string> ( -f<file> | <input:pacbio> ... )
+```
+
+Builds an initial data base, or adds to an existing database, *directly* from either
+(a) the list of .bax.h5 or subreads.[bs]am files following the database name argument,
+or (b) the list of PacBio source files in \<file\> if the -f option is used.
+
+On the first call to dex2DB, that creates the database, then the settings of the
+-a and -q flags, determine the type of the DB as follows.
+If the -a option is set, then Arrow information is added to the DB and the DB is an
+Arrow-DB (A-DB).  
+If the -q option is set, then Quiver information is added to the DB and the DB is an
+Quiver-DB (Q-DB).  
+If neither flag is set, then the DB is a simple Sequence-DB (S-DB).  One can never specify
+both the -a and the -q flags together.
+After the first additions to the database, the settings of the -a and -q flags must be
+consistent with the type of the database call, or left unset in which case the type
+of the database determines which information is pulled from the inputs.
+
+If the files are being added to an existing database, and the
+partition settings of the DB have already been set (see DBsplit below), then the
+partitioning of the database is updated to include the new data.
+If the -l option is set, then either the -q option must be set or the DB must already be
+established as a Q-DB.  If it is set then the Quiver streams are lossy compressed
+(see quiva2DB in the DAZZ_DB module).
