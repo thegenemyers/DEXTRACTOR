@@ -47,7 +47,7 @@ assembly pipelines and not use our DBs as an organizing principle.
 ```
 
 Dextract takes a series of .bax.h5 or .subreads.[bs]am files as input, and depending on
-the option flags settings producess:
+the option flags settings produces:
 
 1. (-f) a .fasta file containing subread sequences, each with a "standard" Pacbio header
 consisting of the movie name, well number, pulse range, and read quality value.
@@ -166,11 +166,11 @@ obtained [here](https://support.hdfgroup.org/downloads/index.html).
 
 ```
 5. dex2DB [-vlaq] [-e<expr(ln>=500 && rq>=750)>] 
-              <path:string> ( -f<file> | <input:pacbio> ... )
+              <path:db> ( -f<file> | <input:pacbio> ... )
 ```
 
 Builds an initial data base, or adds to an existing database, *directly* from either
-(a) the list of .bax.h5 or subreads.[bs]am files following the database name argument,
+(a) the list of .bax.h5 or .subreads.[bs]am files following the database name argument,
 or (b) the list of PacBio source files in \<file\> if the -f option is used.
 
 On the first call to dex2DB, that creates the database, then the settings of the
