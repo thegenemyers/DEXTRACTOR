@@ -55,18 +55,18 @@ consisting of the movie name, well number, pulse range, and read quality value.
 2. (-a) a FASTA format .arrow file containing the pulse width stream for each subread, with
 a header that contains the movie name and the 4 channel SNR values.
 
-3. (-q) a FASTQ-like .quiva file contining for each subread the same header as the
-.fasta file above, save that it start with an @-sign, followed by the 5 quality
+3. (-q) a FASTQ-like .quiva file containing for each subread the same header as the
+.fasta file above, save that it starts with an @-sign, followed by the 5 quality
 value streams used by Quiver, one per line, where the order of the streams is:
 deletion QVs, deletion Tags, insertion QVs, substitution QVs, and last merge QVs. 
 
-If the -v option is set then the program reports the processing of each .bax.h5
+If the -v option is set then the program reports the processing of each PacBio input
 file, otherwise it runs silently.  If none of the -f, -a, or -q flags is set, then by
 default -f is assumed.  The destination of the extracted information is controlled
 by the -o parameter as follows:
 
-1. If -o is absent, then for each input file X.bax.h5, dextract will produce X.fasta,
-X.arrow, and/or X.quiva as per the option flags.
+1. If -o is absent, then for each input file X.bax.h5 or X.subreads.[bs]am, dextract
+will produce X.fasta, X.arrow, and/or X.quiva as per the option flags.
 
 2. If -o is present and followed by a path Y, then the concatenation of the output for
 the input files is placed in Y.fasta, Y.arrow, and/or Y.quiva as per the option flags.
@@ -113,8 +113,8 @@ sequences output by undexta are in lower case and 80 chars per line.  The -U
 option specifies upper case should be used, and the characters per line, or line
 width, can be set to any positive value with the -w option
 
-With the -i option set, the programs run as UNIX pipes that take .fasta (.dexta)
-input from the standard input and write .dexta (.fasta) to the standard output.
+With the -i option set, the program runs as a UNIX pipe that takes .fasta (.dexta)
+input from the standard input and writes .dexta (.fasta) to the standard output.
 In this case the -k option has no effect.
 
 ```
@@ -133,8 +133,8 @@ dexar, replacing the uncompressed image of G.dexar with G.arrow.  By default the
 sequences output by undexar are 80 chars per line.  The characters per line, or
 line width, can be set to any positive value with the -w option
 
-With the -i option set, the programs run as UNIX pipes that take .arrow (.dexar)
-input from the standard input and write .dexar (.arrow) to the standard output.
+With the -i option set, the program runs as a UNIX pipe that takes .arrow (.dexar)
+input from the standard input and writes .dexar (.arrow) to the standard output.
 In this case the -k option has no effect.
 
 
@@ -172,8 +172,9 @@ obtained [here](https://support.hdfgroup.org/downloads/index.html).
 Builds an initial data base, or adds to an existing database, *directly* from either
 (a) the list of .bax.h5 or .subreads.[bs]am files following the database name argument,
 or (b) the list of PacBio source files in \<file\> if the -f option is used.
+One can filter which reads are added to the DB with the -e option (see dextract above).
 
-On the first call to dex2DB, that creates the database, then the settings of the
+On a first call to dex2DB, i.e. one that creates the database, the settings of the
 -a and -q flags, determine the type of the DB as follows.  If the -a option is set,
 then Arrow information is added to the DB and the DB is an Arrow-DB (A-DB).  If
 the -q option is set, then Quiver information is added to the DB and the DB is a
