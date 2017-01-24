@@ -229,23 +229,25 @@ int main(int argc, char* argv[])
   fileQvs = NULL;
   if (output != NULL)
     { if (*output != '\0')
-        { output = Root(output,NULL);
+        { path   = PathTo(output);
+          output = Root(output,NULL);
 
           if (FASTA)
-            { fileFas = Fopen(Catenate("","",output,".fasta"), "w");
+            { fileFas = Fopen(Catenate(path,"/",output,".fasta"), "w");
               if (fileFas == NULL)
                 goto error;
             }
           if (ARROW)
-            { fileArr = Fopen(Catenate("","",output,".arrow"), "w");
+            { fileArr = Fopen(Catenate(path,"/",output,".arrow"), "w");
               if (fileArr == NULL)
                 goto error;
             }
           if (QUIVA)
-            { fileQvs = Fopen(Catenate("","",output,".quiva"), "w");
+            { fileQvs = Fopen(Catenate(path,"/",output,".quiva"), "w");
               if (fileQvs == NULL)
                 goto error;
             }
+          free(path);
         }
       else
         { if (ARROW + FASTA + QUIVA > 1)
