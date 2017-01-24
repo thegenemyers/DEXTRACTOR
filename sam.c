@@ -127,7 +127,7 @@ static int init_record(int len)
 
 samFile *sam_open(char *name)
 { samFile  *sf;
-  gzFile   *ptr = NULL;
+  gzFile    ptr = NULL;
   int       one  = 1;
 
   sf = (samFile *) malloc(sizeof(samFile));
@@ -183,7 +183,7 @@ int sam_close(samFile *sf)
 }
 
 static int sam_getline(samFile *sf, int clen)
-{ gzFile *file = sf->ptr;
+{ gzFile file = sf->ptr;
 
   ++sf->nline;
 
@@ -216,7 +216,7 @@ static int sam_getline(samFile *sf, int clen)
  ********************************************************************************************/
 
 static int bam_header_read(samFile *sf)
-{ gzFile *file = sf->ptr;
+{ gzFile file = sf->ptr;
   int     nlen, ncnt, tlen;
   int     i;
 

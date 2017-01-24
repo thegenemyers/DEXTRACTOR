@@ -25,7 +25,7 @@ typedef struct
     int       is_big;  //  endian (bam only)
     int       nline;   //  current line number (sam only)
     char     *name;    //  file name
-    gzFile   *ptr;     //  pointer to file descriptor
+    gzFile    ptr;     //  pointer to file descriptor
 } samFile;
 
 typedef struct
