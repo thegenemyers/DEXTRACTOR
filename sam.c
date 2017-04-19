@@ -438,6 +438,18 @@ int sam_header_process(samFile *sf, int numeric)
 
  //  SAM Type letter to data size, save Z, H -> 9, and B -> 10
 
+static int is_integer[128] =
+  { 0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+
+    0, 0,  0, 1, 0, 0, 0, 0,   0, 1, 0, 0, 0, 0, 0, 0,
+    0, 0,  0, 1, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0,  0, 1, 0, 0, 0, 0,   0, 1, 0, 0, 0, 0, 0, 0,
+    0, 0,  0, 1, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
+  };
+
 static int bam_tag_size[128] =
   { 0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
     0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
@@ -610,6 +622,28 @@ for (i = 0; i < len; i++, p += size)	\
     theR.bc[i] = x;			\
   }
 
+#define GET_UINT(name,target)							\
+{ switch (p[2])									\
+  { case 'C':									\
+    case 'c':									\
+      target = *((uint8 *) (p+3));						\
+      break;									\
+    case 'S':									\
+    case 's':									\
+      target = *((uint16 *) (p+3));						\
+      break;									\
+    case 'I':									\
+    case 'i':									\
+      target = *((uint32 *) (p+3));						\
+      break;									\
+    default:									\
+      fprintf(stderr,"%s: %s-tag is not of integer type\n",Prog_Name,name);	\
+      return (-1);								\
+  }										\
+  size = bam_tag_size[p[2]];							\
+  p += 3 + size;								\
+}
+
 #define STREAMS(idx,tag)								\
 { len = strlen(((char *) p)+3);								\
   if (len != lseq)									\
@@ -679,30 +713,20 @@ for (i = 0; i < len; i++, p += size)	\
               return (-1);
           }
         }
-      else if (memcmp(p,"zmi",3) == 0)
-        { theR.well = *((int *) (p+3));
-          p   += 7;
-        }
-      else if (memcmp(p,"qsi",3) == 0)
-        { theR.beg = *((int *) (p+3));
-          p   += 7;
-        }
-      else if (memcmp(p,"qei",3) == 0)
-        { theR.end = *((int *) (p+3));
-          p   += 7;
-        }
+      else if (memcmp(p,"zm",2) == 0)
+        GET_UINT("zm",theR.well)
+      else if (memcmp(p,"qs",2) == 0)
+        GET_UINT("qs",theR.beg)
+      else if (memcmp(p,"qe",2) == 0)
+        GET_UINT("qe",theR.end)
       else if (memcmp(p,"rqf",3) == 0)
         { theR.qual = *((float *) (p+3));
-          p   += 7;
+          p += 7;
         }
-      else if (memcmp(p,"npi",3) == 0)
-        { theR.nump = *((int *) (p+3));
-          p   += 7;
-        }
-      else if (memcmp(p,"bqi",3) == 0)
-        { theR.bqual = *((int *) (p+3));
-          p   += 7;
-        }
+      else if (memcmp(p,"np",2) == 0)
+        GET_UINT("np",theR.nump)
+      else if (memcmp(p,"bq",2) == 0)
+        GET_UINT("bq",theR.bqual)
       else if (quiver && memcmp(p,"dqZ",3) == 0)
         STREAMS(0,"dq")
       else if (quiver && memcmp(p,"dtZ",3) == 0)
@@ -821,27 +845,27 @@ static int sam_record_read(samFile *sf, int status)
           CHECK ( *p == ',' || cnt < 4, "Expecting 4 snr values")
           CHECK ( *p != '\t' && *p != '\n', "Cannot parse snr values")
         }
-      else if (strncmp(p,"zm:i:",5) == 0)
+      else if (strncmp(p,"zm:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
         { theR.well = strtol(p+5,&q,0);
           CHECK (p+5 == q, "Could not parse integer well number")
           p = q;
         }
-      else if (strncmp(p,"qs:i:",5) == 0)
+      else if (strncmp(p,"qs:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
         { theR.beg = strtol(p+5,&q,0);
           CHECK (p+5 == q, "Could not parse integer start pulse")
           p = q;
         }
-      else if (strncmp(p,"qe:i:",5) == 0)
+      else if (strncmp(p,"qe:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
         { theR.end = strtol(p+5,&q,0);
           CHECK (p+5 == q, "Could not parse integer end pulse")
           p = q;
         }
-      else if (strncmp(p,"np:i:",5) == 0)
+      else if (strncmp(p,"np:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
         { theR.nump = strtol(p+5,&q,0);
           CHECK (p+5 == q, "Could not parse integer number of passes")
           p = q;
         }
-      else if (strncmp(p,"bq:i:",5) == 0)
+      else if (strncmp(p,"bq:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
         { theR.bqual = strtol(p+5,&q,0);
           CHECK (p+5 == q, "Could not parse integer barcode quality")
           p = q;

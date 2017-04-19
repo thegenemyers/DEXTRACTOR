@@ -401,9 +401,11 @@ int main(int argc, char *argv[])
         path  = PathTo(ng->name);
         core  = Root(ng->name,".subreads.bam");
         if ((file = fopen(Catenate(path,"/",core,".subreads.bam"),"r")) == NULL)
-          { core  = Root(ng->name,".subreads.sam");
+          { free(core);
+            core  = Root(ng->name,".subreads.sam");
             if ((file = fopen(Catenate(path,"/",core,".subreads.sam"),"r")) == NULL)
-              { core  = Root(ng->name,".bax.h5");
+              { free(core);
+                core  = Root(ng->name,".bax.h5");
                 if ((file = fopen(Catenate(path,"/",core,".bax.h5"),"r")) == NULL)
                   { fprintf(stderr,"%s: Cannot find %s/%s with a Pacbio extension\n",
                                    Prog_Name,path,core);
@@ -848,8 +850,6 @@ int main(int argc, char *argv[])
           }
     
         free(path);
-        free(core);
-
         if (VERBOSE)
           { fprintf(stderr,   "Done\n"); fflush(stdout); }
       }
