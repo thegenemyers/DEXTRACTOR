@@ -461,10 +461,10 @@ int main(int argc, char *argv[])
 
         if (intype == IS_BAX)
           { SubRead  *s;
-            QVcoding *coding;
+            QVcoding *coding = NULL;
             int       pwell, pcnt;
             int       i, x;
-            int64     qpos;
+            int64     qpos = 0;
 
             if (VERBOSE)
               { fprintf(stderr, "  Extracting subreads ...\n"); fflush(stderr); }
@@ -659,11 +659,11 @@ int main(int argc, char *argv[])
 
         else
           { samRecord *rec;
-            QVcoding  *coding;
+            QVcoding  *coding = NULL;
             int        pwell, pcnt;
             int        i, x;
-            int        qpos;
-            char      *hdr;
+            int        qpos = 0;
+            char      *hdr == NULL;
 
             if (intype == IS_BAM)
               { if ((input = sam_open(Catenate(path,"/",core,".subreads.bam"))) == NULL)

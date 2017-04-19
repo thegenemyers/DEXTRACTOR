@@ -317,7 +317,7 @@ static int eval_S(Node *v)
     case OP_EQ:
       return (eval_S(v->lft) == eval_S(v->rgt));
     case OP_INT:
-      return ((int) (v->lft));
+      return ((int) (int64) (v->lft));
     case OP_ZM:
       return (S_Record->well);
     case OP_LN:
@@ -367,7 +367,7 @@ static int eval_X(Node *v)
     case OP_EQ:
       return (eval_X(v->lft) == eval_X(v->rgt));
     case OP_INT:
-      return ((int) (v->lft));
+      return ((int) (int64) (v->lft));
     case OP_ZM:
       return (X_Record->well);
     case OP_LN:
