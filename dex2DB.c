@@ -663,7 +663,7 @@ int main(int argc, char *argv[])
             int        pwell, pcnt;
             int        i, x;
             int        qpos = 0;
-            char      *hdr == NULL;
+            char      *hdr = NULL;
 
             if (intype == IS_BAM)
               { if ((input = sam_open(Catenate(path,"/",core,".subreads.bam"))) == NULL)
