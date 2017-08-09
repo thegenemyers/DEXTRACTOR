@@ -30,8 +30,9 @@
 #include <unistd.h>
 
 #include "DB.h"
-#include "bax.h"
 #include "sam.h"
+#include "bax.h"
+#include "expr.h"
 
 #ifdef HIDE_FILES
 #define PATHSEP "/."
@@ -141,6 +142,7 @@ int main(int argc, char *argv[])
   int     LOSSY;
   int     ARROW;
   int     QUIVER;
+  Filter *EXPR;
 
   //   Process command line
 
@@ -150,6 +152,7 @@ int main(int argc, char *argv[])
     ARG_INIT("dex2DB")
 
     IFILE = NULL;
+    EXPR  = NULL;
 
     j = 1;
     for (i = 1; i < argc; i++)
@@ -165,6 +168,9 @@ int main(int argc, char *argv[])
                 exit (1);
               }
             break;
+          case 'e':
+            EXPR = parse_filter(argv[i]+2);
+            break;
         }
       else
         argv[j++] = argv[i];
@@ -174,6 +180,9 @@ int main(int argc, char *argv[])
     LOSSY   = flags['l'];
     ARROW   = flags['a'];
     QUIVER  = flags['q'];
+
+    if (EXPR == NULL)
+      EXPR = parse_filter("ln>=500 && rq>=750");
      
     if ( (IFILE == NULL && argc <= 2) || (IFILE != NULL && argc != 2) )
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage[0]);
@@ -488,6 +497,9 @@ int main(int argc, char *argv[])
                   { int   rlen;
                     char *delQV, *delTag, *insQV, *mergeQV, *subQV;
 
+                    if ( ! evaluate_bax_filter(EXPR,bax,s))
+                      continue;
+
                     rlen = s->lpulse - s->fpulse;
                     delQV   = bax->delQV   + s->fpulse + s->data_off;
                     delTag  = bax->delTag  + s->fpulse + s->data_off;
@@ -549,6 +561,9 @@ int main(int argc, char *argv[])
             while ((s = nextSubread(bax,0)) != NULL)
               { int    rlen, clen;
                 char  *read;
+
+                if ( ! evaluate_bax_filter(EXPR,bax,s))
+                  continue;
 
                 rlen    = s->lpulse - s->fpulse;
                 read    = bax->baseCall + s->fpulse + s->data_off;
@@ -703,7 +718,10 @@ int main(int argc, char *argv[])
                   { char *delQV, *delTag, *insQV, *mergeQV, *subQV;
 
                     if (rec == NULL)
-                    goto error;
+                      goto error;
+
+                    if ( ! evaluate_bam_filter(EXPR,rec))
+                      continue;
 
                     delQV   = rec->qv[0];
                     delTag  = rec->qv[1];
@@ -748,6 +766,9 @@ int main(int argc, char *argv[])
 
                 if (rec == NULL)
                   goto error;
+
+                if ( ! evaluate_bam_filter(EXPR,rec))
+                  continue;
 
                 rlen = rec->len;
                 read = rec->seq;

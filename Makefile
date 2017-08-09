@@ -1,4 +1,4 @@
-PATH_HDF5 = /sw/apps/hdf5/current
+PATH_HDF5 = /sw
 PATH_HDF5 = /usr/local/hdf5
 
 DEST_DIR  = ~/bin
@@ -30,8 +30,8 @@ dexqv: dexqv.c DB.c DB.h QV.c QV.h
 undexqv: undexqv.c DB.c DB.h QV.c QV.h
 	gcc $(CFLAGS) -o undexqv undexqv.c DB.c QV.c
 
-dex2DB: dex2DB.c sam.c bax.c DB.c QV.c bax.h DB.h QV.h
-	gcc $(CFLAGS) -I$(PATH_HDF5)/include -L$(PATH_HDF5)/lib -o dex2DB dex2DB.c sam.c bax.c DB.c QV.c -lhdf5 -lz
+dex2DB: dex2DB.c sam.c bax.c expr.c expr.h DB.c QV.c bax.h DB.h QV.h
+	gcc $(CFLAGS) -I$(PATH_HDF5)/include -L$(PATH_HDF5)/lib -o dex2DB dex2DB.c sam.c bax.c expr.c DB.c QV.c -lhdf5 -lz
 
 clean:
 	rm -f $(ALL)
