@@ -78,8 +78,8 @@ static Node *node(int op, Node *lft, Node *rgt)
 }
 
 static Node *terminal()
-{ int       op;
-  long long x;
+{ int   op;
+  int64 x;
 
   switch (*Scan)
   { case 'z':

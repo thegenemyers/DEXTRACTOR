@@ -98,7 +98,7 @@ int main(int argc, char* argv[])
         // Read in compression scheme
 
         if (fread(&half,sizeof(uint16),1,input) != 1)
-          SYSTEM_ERROR
+          SYSTEM_READ_ERROR
         if (half == 0x55aa || half == 0xaa55)
           newv = 1;
         else
@@ -125,54 +125,54 @@ int main(int argc, char* argv[])
               while (byte == 255)
                 { well += 255;
                   if (fread(&byte,1,1,input) != 1)
-                    SYSTEM_ERROR
+                    SYSTEM_READ_ERROR
                 }
               well += byte;
 
               if (newv)
                 if (coding->flip)
                   { if (fread(&beg,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     flip_long(&beg);
                     if (fread(&end,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     flip_long(&end);
                     if (fread(&qv,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     flip_long(&qv);
                   }
                 else
                   { if (fread(&beg,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     if (fread(&end,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     if (fread(&qv,sizeof(int),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                   }
               else
                 if (coding->flip)
                   { if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     flip_short(&half);
                     beg = half;
                     if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     flip_short(&half);
                     end = half;
                     if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     flip_short(&half);
                     qv = half;
                   }
                 else
                   { if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     beg = half;
                     if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     end = half;
                     if (fread(&half,sizeof(uint16),1,input) != 1)
-                      SYSTEM_ERROR
+                      SYSTEM_READ_ERROR
                     qv = half;
                   }
 

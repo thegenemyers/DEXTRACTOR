@@ -58,7 +58,7 @@ a header that contains the movie name and the 4 channel SNR values.
 3. (-q) a FASTQ-like .quiva file containing for each subread the same header as the
 .fasta file above, save that it starts with an @-sign, followed by the 5 quality
 value streams used by Quiver, one per line, where the order of the streams is:
-deletion QVs, deletion Tags, insertion QVs, substitution QVs, and last merge QVs. 
+deletion QVs, deletion Tags, insertion QVs, merge QVs, and last substitution QVs. 
 
 If the -v option is set then the program reports the processing of each PacBio input
 file, otherwise it runs silently.  If none of the -f, -a, or -q flags is set, then by

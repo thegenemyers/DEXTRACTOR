@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
   int    ifiles, ofiles, ocells;
   char **flist;
 
-  HITS_DB db;
+  DAZZ_DB db;
   int     ureads;
   int64   offset;
 
@@ -268,13 +268,13 @@ int main(int argc, char *argv[])
               goto error;
           }
 
-        fwrite(&db,sizeof(HITS_DB),1,indx);
+        fwrite(&db,sizeof(DAZZ_DB),1,indx);
 
         ureads  = 0;
         offset  = 0;
       }
     else
-      { HITS_READ rec;
+      { DAZZ_READ rec;
 
         if (fscanf(istub,DB_NFILE,&ocells) != 1)
           { fprintf(stderr,"%s: %s.db is corrupted, read failed\n",Prog_Name,root);
@@ -285,13 +285,13 @@ int main(int argc, char *argv[])
         if (indx == NULL)
           exit (1);
 
-        if (fread(&db,sizeof(HITS_DB),1,indx) != 1)
+        if (fread(&db,sizeof(DAZZ_DB),1,indx) != 1)
           { fprintf(stderr,"%s: %s.idx is corrupted, read failed\n",Prog_Name,root);
             exit (1);
           }
 
-        fseeko(indx, -sizeof(HITS_READ), SEEK_END);
-        fread(&rec,sizeof(HITS_READ),1,indx);
+        fseeko(indx, -sizeof(DAZZ_READ), SEEK_END);
+        fread(&rec,sizeof(DAZZ_READ),1,indx);
         if (rec.coff < 0)
           { if (ARROW || QUIVER)
               { fprintf(stderr,"%s: Sequence DB but you set either the -a or -q flag?\n",
@@ -368,7 +368,7 @@ int main(int argc, char *argv[])
   { int            maxlen;
     int64          totlen, count[4];
     int            pmax;
-    HITS_READ     *prec;
+    DAZZ_READ     *prec;
     int            c;
     File_Iterator *ng = NULL;
     BaxData       _bax, *bax = &_bax;
@@ -377,7 +377,7 @@ int main(int argc, char *argv[])
     //  Buffer for reads all in the same well
 
     pmax = 100;
-    prec = (HITS_READ *) Malloc(sizeof(HITS_READ)*pmax,"Allocating record buffer");
+    prec = (DAZZ_READ *) Malloc(sizeof(DAZZ_READ)*pmax,"Allocating record buffer");
     if (prec == NULL)
       goto error;
 
@@ -635,7 +635,7 @@ int main(int argc, char *argv[])
                     pcnt += 1;
                     if (pcnt >= pmax)
                       { pmax = ((int) (pcnt*1.2)) + 100;
-                        prec = (HITS_READ *) realloc(prec,sizeof(HITS_READ)*pmax);
+                        prec = (DAZZ_READ *) realloc(prec,sizeof(DAZZ_READ)*pmax);
                         if (prec == NULL)
                           { fprintf(stderr,"%s: Out of memory",Prog_Name);
                             fprintf(stderr," (Allocating %d read records)\n",pmax);
@@ -651,7 +651,7 @@ int main(int argc, char *argv[])
                       if (prec[i].rlen > prec[x].rlen)
                         x = i;
                     prec[x].flags |= DB_BEST;
-                    fwrite(prec,sizeof(HITS_READ),pcnt,indx);
+                    fwrite(prec,sizeof(DAZZ_READ),pcnt,indx);
                     prec[0] = prec[pcnt];
                     pcnt = 1;
                   }
@@ -666,7 +666,7 @@ int main(int argc, char *argv[])
               if (prec[i].rlen > prec[x].rlen)
                 x = i;
             prec[x].flags |= DB_BEST;
-            fwrite(prec,sizeof(HITS_READ),pcnt,indx);
+            fwrite(prec,sizeof(DAZZ_READ),pcnt,indx);
   
             fprintf(ostub,DB_FDATA,ureads,core,bax->movieName);
             ocells += 1;
@@ -831,7 +831,7 @@ int main(int argc, char *argv[])
                     pcnt += 1;
                     if (pcnt >= pmax)
                       { pmax = ((int) (pcnt*1.2)) + 100;
-                        prec = (HITS_READ *) realloc(prec,sizeof(HITS_READ)*pmax);
+                        prec = (DAZZ_READ *) realloc(prec,sizeof(DAZZ_READ)*pmax);
                         if (prec == NULL)
                           { fprintf(stderr,"%s: Out of memory",Prog_Name);
                             fprintf(stderr," (Allocating %d read records)\n",pmax);
@@ -847,7 +847,7 @@ int main(int argc, char *argv[])
                       if (prec[i].rlen > prec[x].rlen)
                         x = i;
                     prec[x].flags |= DB_BEST;
-                    fwrite(prec,sizeof(HITS_READ),pcnt,indx);
+                    fwrite(prec,sizeof(DAZZ_READ),pcnt,indx);
                     prec[0] = prec[pcnt];
                     pcnt = 1;
                   }
@@ -862,7 +862,7 @@ int main(int argc, char *argv[])
               if (prec[i].rlen > prec[x].rlen)
                 x = i;
             prec[x].flags |= DB_BEST;
-            fwrite(prec,sizeof(HITS_READ),pcnt,indx);
+            fwrite(prec,sizeof(DAZZ_READ),pcnt,indx);
 
             fprintf(ostub,DB_FDATA,ureads,core,hdr);
             ocells += 1;
@@ -905,7 +905,7 @@ int main(int argc, char *argv[])
     { int64      totlen, dbpos, size;
       int        nblock, ireads, tfirst, rlen;
       int        ufirst, cutoff, allflag;
-      HITS_READ  record;
+      DAZZ_READ  record;
       int        i;
 
       if (VERBOSE)
@@ -947,11 +947,11 @@ int main(int argc, char *argv[])
       //    compute and record partition indices for the rest of the db from this point
       //    forward.
 
-      fseeko(indx,sizeof(HITS_DB)+sizeof(HITS_READ)*ufirst,SEEK_SET);
+      fseeko(indx,sizeof(DAZZ_DB)+sizeof(DAZZ_READ)*ufirst,SEEK_SET);
       totlen = 0;
       ireads = 0;
       for (i = ufirst; i < ureads; i++)
-        { if (fread(&record,sizeof(HITS_READ),1,indx) != 1)
+        { if (fread(&record,sizeof(DAZZ_READ),1,indx) != 1)
             { fprintf(stderr,"%s: %s.idx is corrupted, read failed\n",Prog_Name,root);
               goto error;
             }
@@ -983,7 +983,7 @@ int main(int argc, char *argv[])
     db.treads = ureads;
 
   rewind(indx);
-  fwrite(&db,sizeof(HITS_DB),1,indx);   //  Write the finalized db record into .idx
+  fwrite(&db,sizeof(DAZZ_DB),1,indx);   //  Write the finalized db record into .idx
 
   rewind(ostub);                        //  Rewrite the number of files actually added
   fprintf(ostub,DB_NFILE,ocells);
