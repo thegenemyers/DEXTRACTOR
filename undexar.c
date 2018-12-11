@@ -78,6 +78,10 @@ int main(int argc, char *argv[])
 
     if ((PIPE && argc > 1) || (!PIPE && argc <= 1))
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -i: source is on standard input.\n");
+        fprintf(stderr,"      -k: do *not* remove the .dexar file on completion.\n");
+        fprintf(stderr,"      -w: line width for arrow lines.\n");
         exit (1);
       }
     if (PIPE)
@@ -203,7 +207,7 @@ int main(int argc, char *argv[])
 
               rlen = end-beg;
               if (rlen > rmax)
-                { rmax = ((int) (1.2 * rmax)) + 1000 + MAX_BUFFER;
+                { rmax = ((int) (1.2 * rlen)) + 1000 + MAX_BUFFER;
                   read = (char *) Realloc(read,rmax+1,"Allocating read buffer");
                 }
               clen = COMPRESSED_LEN(rlen);

@@ -45,6 +45,9 @@ int main(int argc, char* argv[])
 
     if (argc == 1)
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -k: do *not* remove the .quiva file on completion.\n");
+        fprintf(stderr,"      -l: use lossy compression (not recommended).\n");
         exit (1);
       }
   }

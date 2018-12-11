@@ -62,6 +62,9 @@ int main(int argc, char* argv[])
 
     if (argc == 1)
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -k: do *not* remove the .dexqv file on completion.\n");
+        fprintf(stderr,"      -U: use uppercase letters (default is lower case).\n");
         exit (1);
       }
   }

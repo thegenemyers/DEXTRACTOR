@@ -187,6 +187,22 @@ int main(int argc, char *argv[])
     if ( (IFILE == NULL && argc <= 2) || (IFILE != NULL && argc != 2) )
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage[0]);
         fprintf(stderr,"       %*s %s\n",(int) strlen(Prog_Name),"",Usage[1]);
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -f: build or add to DB the files listed in the -f file.\n");
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -a: Build or add to an arrow DB.\n");
+        fprintf(stderr,"      -q: Build or add to a quiva DB.\n");
+        fprintf(stderr,"      -l: Use lossy compression (with -q option only).\n");
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -e: subread selection expression.  Possible variables are:\n");
+        fprintf(stderr,"           zm  - well number\n");
+        fprintf(stderr,"           ln  - length of subread\n");
+        fprintf(stderr,"           rq  - quality value of subread (normalized to [0,1000])\n");
+        fprintf(stderr,"           bc1 - # of first barcode\n");
+        fprintf(stderr,"           bc2 - # of second barcode\n");
+        fprintf(stderr,"           bq  - quality of barcode detection (normalized to [0,100])\n");
+        fprintf(stderr,"           np  - number of passes producing subread\n");
+        fprintf(stderr,"           qs  - start pulse of subread\n");
         exit (1);
       }
     if (ARROW && QUIVER)

@@ -218,6 +218,24 @@ int main(int argc, char* argv[])
 
     if (argc == 1)
       { fprintf(stderr,"Usage: %s %s\n",Prog_Name,Usage);
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -f: extract a .fasta file with Pacbio-style line headers.\n");
+        fprintf(stderr,"      -a: extract a .arrow file with SNR encoded in line headers.\n");
+        fprintf(stderr,"      -q: extract a .quiva file with Pacbio-style line headers.\n");
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -o: If absent, output files use root name of input .bax or .bam.\n");
+        fprintf(stderr,"        : If no path given, output sent to standard output.\n");
+        fprintf(stderr,"        : If path given, output files use path name as root name.\n");
+        fprintf(stderr,"\n");
+        fprintf(stderr,"      -e: subread selection expression.  Possible variables are:\n");
+        fprintf(stderr,"           zm  - well number\n");
+        fprintf(stderr,"           ln  - length of subread\n");
+        fprintf(stderr,"           rq  - quality value of subread (normalized to [0,1000])\n");
+        fprintf(stderr,"           bc1 - # of first barcode\n");
+        fprintf(stderr,"           bc2 - # of second barcode\n");
+        fprintf(stderr,"           bq  - quality of barcode detection (normalized to [0,100])\n");
+        fprintf(stderr,"           np  - number of passes producing subread\n");
+        fprintf(stderr,"           qs  - start pulse of subread\n");
         exit (1);
       }
   }
