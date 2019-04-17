@@ -66,7 +66,7 @@ static void writeSubread(BaxData *b, SubRead *s, FILE *fas, FILE *arr, FILE* qvs
 
       fprintf(fas,">%s/%d/%d_%d RQ=0.%0d\n",b->movieName,s->well,ibeg,iend,s->qv);
 
-      if (isupper(baseCall[ibeg]))
+      if (isupper(baseCall[0]))
         for (a = 0; a < len; a++)
           baseCall[a] += LOWER_OFFSET;
 
@@ -89,7 +89,7 @@ static void writeSubread(BaxData *b, SubRead *s, FILE *fas, FILE *arr, FILE* qvs
 
       fprintf(qvs,"@%s/%d/%d_%d RQ=0.%0d\n",b->movieName,s->well,ibeg,iend,s->qv);
 
-      if (isupper(delTag[ibeg]))
+      if (isupper(delTag[0]))
         for (a = 0; a < len; a++)
           delTag[a] += LOWER_OFFSET;
       d = b->delLimit;
