@@ -1883,7 +1883,6 @@ int Load_All_Track_Data(DAZZ_TRACK *track)
           if (len > 0)
             { if (fread(data+o,len,1,dfile) != 1)
                 { EPRINTF(EPLACE,"%s: Read of .data failed (Load_All_Track_Data)\n",Prog_Name);
-printf(" o4 = %lld\n",o);
                   free(data);
                   EXIT(1);
                 }
@@ -1904,7 +1903,6 @@ printf(" o4 = %lld\n",o);
           if (len > 0)
             { if (fread(data+o,len,1,dfile) != 1)
                 { EPRINTF(EPLACE,"%s: Read of .data failed (Load_All_Track_Data)\n",Prog_Name);
-printf(" o8 = %lld\n",o);
                   free(data);
                   EXIT(1);
                 }
@@ -2058,13 +2056,6 @@ error:
 
 int Write_Extra(FILE *afile, DAZZ_EXTRA *extra)
 { int slen; 
-
-#define EWRITE(v,s,n,file)                                                      \
-  { if (fwrite(v,s,n,file) != (size_t) n)                                       \
-      { fprintf(stderr,"%s: System error, read failed!\n",Prog_Name);           \
-        EXIT(1);								\
-      }									 	\
-  }
 
   FFWRITE(&(extra->vtype),sizeof(int),1,afile)
   FFWRITE(&(extra->nelem),sizeof(int),1,afile)
