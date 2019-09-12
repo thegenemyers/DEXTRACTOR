@@ -797,7 +797,7 @@ void Trim_DB(DAZZ_DB *db)
                 }
             record->alen = Realloc(record->alen,sizeof(int)*j,NULL);
           }
-        record->anno = Realloc(record->anno,record->size*j,NULL);
+        record->anno = Realloc(record->anno,record->size*(j+1),NULL);
         record->nreads = j;
       }
 
@@ -1738,7 +1738,8 @@ DAZZ_TRACK *Open_Track(DAZZ_DB *db, char *track)
         }
     }
   else
-    { if (fread(anno,size,nreads,afile) != (size_t) nreads)
+    { dmax = 0;
+      if (fread(anno,size,nreads,afile) != (size_t) nreads)
         { EPRINTF(EPLACE,"%s: Track '%s' annotation file is junk\n",Prog_Name,track);
           goto error;
         }
@@ -2075,6 +2076,7 @@ void Close_Track(DAZZ_DB *db, DAZZ_TRACK *track)
   for (record = db->tracks; record != NULL; record = record->next)
     { if (track == record)
         { free(record->anno);
+          free(record->alen);
           if (record->loaded)
             free(record->data);
           else

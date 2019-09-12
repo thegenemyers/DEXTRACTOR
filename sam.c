@@ -479,7 +479,8 @@ static void flip_auxilliary(uint8 *s, uint8 *e)
           s += 2;
           break;
         case 4:
-          flip_int(s);
+          if (is_integer[s[-1]])
+            flip_int(s);
           s += 4;
           break;
         case 8:
@@ -668,7 +669,11 @@ for (i = 0; i < len; i++, p += size)	\
           p   += 24;
         }
       else if (arrow && memcmp(p,"pwB",3) == 0)
-        { size = bam_tag_size[p[3]];
+        { if (!is_integer[p[3]])
+            { fprintf(stderr,"%s: pw-tag is not of integer type\n",Prog_Name);
+              return (-1);
+            }
+          size = bam_tag_size[p[3]];
           len  = *((int32 *) (p+4));
           if (len != lseq)
             { fprintf(stderr,"%s: pw-tag is not the same length as sequence\n",Prog_Name);
@@ -685,13 +690,14 @@ for (i = 0; i < len; i++, p += size)	\
             case 4:
               PULSES(uint32)
               break;
-            default:
-              fprintf(stderr,"%s: pw-tag is not of integer type\n",Prog_Name);
-              return (-1);
           }
         }
       else if (memcmp(p,"bcB",3) == 0)
-        { size = bam_tag_size[p[3]];
+        { if (!is_integer[p[3]])
+            { fprintf(stderr,"%s: pw-tag is not of integer type\n",Prog_Name);
+              return (-1);
+            }
+          size = bam_tag_size[p[3]];
           len  = *((int32 *) (p+4));
           if (len > 2)
             { fprintf(stderr,"%s: More than two barcode values\n",Prog_Name);
@@ -708,9 +714,6 @@ for (i = 0; i < len; i++, p += size)	\
             case 4:
               BARCODES(uint32)
               break;
-            default:
-              fprintf(stderr,"%s: bc-tag is not of integer type\n",Prog_Name);
-              return (-1);
           }
         }
       else if (memcmp(p,"zm",2) == 0)
