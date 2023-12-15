@@ -81,40 +81,19 @@ static int make_room(int len)
  // Universal sam Record for all routines
 
 static samRecord theR;
-static int       rmax = 0;  //  maximum length for a sequence/arrow
+static int       rmax = 0;  //  maximum length for a sequence
 
 static int init_record(int len)
 { if (len > rmax)
     { if (rmax == 0)
         theR.seq = NULL;
       rmax = 1.2*len + 1000;
-      theR.seq = realloc(theR.seq,7*rmax);
+      theR.seq = realloc(theR.seq,rmax);
       if (theR.seq == NULL)
         { fprintf(stderr,"%s: Could not (re)allocate %d bytes of memory\n",Prog_Name,2*rmax);
           return (1);
         }
-      theR.arr   = theR.seq + rmax;
-      theR.qv[0] = theR.arr + rmax;
-      theR.qv[1] = theR.qv[0] + rmax;
-      theR.qv[2] = theR.qv[1] + rmax;
-      theR.qv[3] = theR.qv[2] + rmax;
-      theR.qv[4] = theR.qv[3] + rmax;
     }
-  theR.well  = -1;
-  theR.beg   = -1;
-  theR.end   = -1;
-  theR.qual  = -1.;
-  theR.snr[0] = -1.;
-  theR.bc[0]  = -1;
-  theR.bc[1]  = -1;
-  theR.bqual  = -1;
-  theR.nump   = -1;
-  theR.arr[0] = 'A';
-  theR.qv[0][0] = '\0';
-  theR.qv[1][0] = '\0';
-  theR.qv[2][0] = '\0';
-  theR.qv[3][0] = '\0';
-  theR.qv[4][0] = '\0';
   return (0);
 }
 
@@ -363,67 +342,6 @@ int sam_header_process(samFile *sf, int numeric)
       ARR_CONVERT = '0';
     }
 
-  desc = strstr((char *) data,"\tDS:");
-  if (desc == NULL)
-    { fprintf(stderr,"%s: File header does not contain a description (DS) tag\n",Prog_Name);
-      return (-1);
-    }
-  desc += 1;
-  eol = index(desc,'\n');
-  eod = index(desc,'\t');
-  if (eod == NULL)
-    eod = eol;
-  *eod = '\0';
-
-  subs = strstr(desc,"READTYPE=SUBREAD");
-  if (subs != NULL)
-    { if (subs[16] != ';' && subs[16] != '\0')
-        subs = NULL;
-      else if (subs[-1] == ':' && subs[-1] == ';')
-        subs = NULL;
-    }
-  if (subs == NULL)
-    { *eod = '\t';
-      *eol = '\n';
-      fprintf(stderr,"%s: File does not contain subreads\n",Prog_Name);
-      return (-1);
-    }
-
-  status = 0;
-  pw = strstr(desc,"PulseWidth:Frames=pw");
-  if (pw != NULL)
-    { if (pw[20] != ';' && pw[20] != '\0')
-        pw = NULL;
-      else if (pw[-1] != ':' && pw[-1] != ';')
-        pw = NULL;
-    }
-  if (pw != NULL)
-    status = HASPW;
-  else
-    { pw = strstr(desc,"PulseWidth:CodecV1=pw");
-      if (pw != NULL)
-        { if (pw[21] != ';' && pw[21] != '\0')
-            pw = NULL;
-          else if (pw[-1] != ':' && pw[-1] != ';')
-            pw = NULL;
-        }
-      if (pw != NULL)
-        status = HASPW | CODEC;
-    }
-
-  pw = strstr(desc,"DeletionTag=dt");
-  if (pw != NULL)
-    { if (pw[14] != ';' && pw[14] != '\0')
-        pw = NULL;
-      else if (pw[-1] != ':' && pw[-1] != ';')
-        pw = NULL;
-    }
-  if (pw != NULL)
-    status |= HASQV;
-
-  *eod = '\t';
-  *eol = '\n';
-
   return (status);
 }
 
@@ -519,12 +437,8 @@ static void flip_auxilliary(uint8 *s, uint8 *e)
     } 
 }
 
-static int bam_record_read(samFile *sf, int status)
+static int bam_record_read(samFile *sf)
 { int ldata, lname, lcigar, lseq, aux;
-  int arrow, quiver;
-
-  arrow  = ((status & HASPW) != 0);
-  quiver = ((status & HASQV) != 0);
 
   { int    ret;      //  read next block
     uint32 x[9];
@@ -600,160 +514,6 @@ static int bam_record_read(samFile *sf, int status)
       seq[i] = SEQ_CONVERT[t[e] >> 4];
   }
 
-  { int      size, len;    //  Get zm, qs, qe, rq, sn, and pw from auxilliary tags
-    uint8   *p, *e;
-    char    *arr;
-    int      i;
-
-    arr = theR.arr;
-    p = data + aux;
-    e = data + ldata;
-
-#define PULSES(type)			\
-for (i = 0; i < len; i++, p += size)	\
-  { uint32 x = *((type *) p);		\
-    if (x >= 5)				\
-      x = 4;				\
-    arr[i] = x+ARR_CONVERT;		\
-  }
-
-#define BARCODES(type)			\
-for (i = 0; i < len; i++, p += size)	\
-  { uint32 x = *((type *) p);		\
-    theR.bc[i] = x;			\
-  }
-
-#define GET_UINT(name,target)							\
-{ switch (p[2])									\
-  { case 'C':									\
-    case 'c':									\
-      target = *((uint8 *) (p+3));						\
-      break;									\
-    case 'S':									\
-    case 's':									\
-      target = *((uint16 *) (p+3));						\
-      break;									\
-    case 'I':									\
-    case 'i':									\
-      target = *((uint32 *) (p+3));						\
-      break;									\
-    default:									\
-      fprintf(stderr,"%s: %s-tag is not of integer type\n",Prog_Name,name);	\
-      return (-1);								\
-  }										\
-  size = bam_tag_size[p[2]];							\
-  p += 3 + size;								\
-}
-
-#define STREAMS(idx,tag)								\
-{ len = strlen(((char *) p)+3);								\
-  if (len != lseq)									\
-    { fprintf(stderr,"%s: %s-tag is not the same length as sequence\n",Prog_Name,tag);	\
-      return (-1);									\
-    }											\
-  strcpy(theR.qv[idx],(char *) (p+3)); 							\
-  p += len + 4;										\
-}
-
-    while (p < e)
-      if (arrow && memcmp(p,"snBf",4) == 0)
-        { len = *((int32 *) (p+4));
-          if (len != 4)
-            { fprintf(stderr,"%s: sn-tag does not have 4 floats\n",Prog_Name);
-              return (-1);
-            }
-          theR.snr[0] = *((float *) (p+8));
-          theR.snr[1] = *((float *) (p+12));
-          theR.snr[2] = *((float *) (p+16));
-          theR.snr[3] = *((float *) (p+20));
-          p   += 24;
-        }
-      else if (arrow && memcmp(p,"pwB",3) == 0)
-        { if (!is_integer[p[3]])
-            { fprintf(stderr,"%s: pw-tag is not of integer type\n",Prog_Name);
-              return (-1);
-            }
-          size = bam_tag_size[p[3]];
-          len  = *((int32 *) (p+4));
-          if (len != lseq)
-            { fprintf(stderr,"%s: pw-tag is not the same length as sequence\n",Prog_Name);
-              return (-1);
-            }
-          p += 8;
-          switch (size)
-          { case 1:
-              PULSES(uint8)
-              break;
-            case 2:
-              PULSES(uint16)
-              break;
-            case 4:
-              PULSES(uint32)
-              break;
-          }
-        }
-      else if (memcmp(p,"bcB",3) == 0)
-        { if (!is_integer[p[3]])
-            { fprintf(stderr,"%s: pw-tag is not of integer type\n",Prog_Name);
-              return (-1);
-            }
-          size = bam_tag_size[p[3]];
-          len  = *((int32 *) (p+4));
-          if (len > 2)
-            { fprintf(stderr,"%s: More than two barcode values\n",Prog_Name);
-              return (-1);
-            }
-          p += 8;
-          switch (size)
-          { case 1:
-              BARCODES(uint8)
-              break;
-            case 2:
-              BARCODES(uint16)
-              break;
-            case 4:
-              BARCODES(uint32)
-              break;
-          }
-        }
-      else if (memcmp(p,"zm",2) == 0)
-        GET_UINT("zm",theR.well)
-      else if (memcmp(p,"qs",2) == 0)
-        GET_UINT("qs",theR.beg)
-      else if (memcmp(p,"qe",2) == 0)
-        GET_UINT("qe",theR.end)
-      else if (memcmp(p,"rqf",3) == 0)
-        { theR.qual = *((float *) (p+3));
-          p += 7;
-        }
-      else if (memcmp(p,"np",2) == 0)
-        GET_UINT("np",theR.nump)
-      else if (memcmp(p,"bq",2) == 0)
-        GET_UINT("bq",theR.bqual)
-      else if (quiver && memcmp(p,"dqZ",3) == 0)
-        STREAMS(0,"dq")
-      else if (quiver && memcmp(p,"dtZ",3) == 0)
-        STREAMS(1,"dt")
-      else if (quiver && memcmp(p,"iqZ",3) == 0)
-        STREAMS(2,"iq")
-      else if (quiver && memcmp(p,"mqZ",3) == 0)
-        STREAMS(3,"mq")
-      else if (quiver && memcmp(p,"sqZ",3) == 0)
-        STREAMS(4,"sq")
-      else
-        { size = bam_tag_size[p[2]];
-          if (size <= 8)
-            p += 3+size; 
-          else if (size == 9)
-            p += strlen(((char *) p)+3) + 4;
-          else
-            { size = bam_tag_size[p[3]];
-              len  = *((int32 *) (p+4));
-              p += 8 + size*len;
-            }
-        }
-  }
-
   return (1);
 }
 
@@ -772,13 +532,9 @@ for (i = 0; i < len; i++, p += size)	\
   *e = 0;						\
 }
 
-static int sam_record_read(samFile *sf, int status)
+static int sam_record_read(samFile *sf)
 { char  *p;
   int    qlen, ret;
-  int    arrow, quiver;
-
-  arrow  = ((status & HASPW) != 0);
-  quiver = ((status & HASQV) != 0);
 
   //  read next line
 
@@ -823,171 +579,22 @@ static int sam_record_read(samFile *sf, int status)
     CHECK( p == NULL, "No auxilliary tags in SAM record, file corrupted?")
   }
 
-#define QV_STREAM(x)										\
-{ char *qv;											\
-												\
-  qv = theR.qv[x];										\
-  p += 5;											\
-  for (cnt = 0; *p > ' ' && cnt < qlen; cnt++)							\
-    qv[cnt] = *p++;										\
-  CHECK ( *p == ',' || cnt < qlen, "quality stream has different length than read")		\
-  CHECK ( *p != '\t', "Cannot parse quality stream width values")				\
-} 
-
-  { char *q, *arr;       //  Get zm, qs, qe, rq, sn, and pw from auxilliary tags
-    int   x, cnt;
-
-    arr = theR.arr;
-    while (*p++ == '\t')
-      if (strncmp(p,"sn:B:f,",7) == 0 && arrow)
-        { p += 6;
-          for (cnt = 0; *p == ',' && cnt < 4; cnt++)
-            { theR.snr[cnt] = strtod(q=p+1,&p);
-              CHECK( p == q, "Cannot parse snr value")
-            }
-          CHECK ( *p == ',' || cnt < 4, "Expecting 4 snr values")
-          CHECK ( *p != '\t' && *p != '\n', "Cannot parse snr values")
-        }
-      else if (strncmp(p,"zm:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
-        { theR.well = strtol(p+5,&q,0);
-          CHECK (p+5 == q, "Could not parse integer well number")
-          p = q;
-        }
-      else if (strncmp(p,"qs:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
-        { theR.beg = strtol(p+5,&q,0);
-          CHECK (p+5 == q, "Could not parse integer start pulse")
-          p = q;
-        }
-      else if (strncmp(p,"qe:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
-        { theR.end = strtol(p+5,&q,0);
-          CHECK (p+5 == q, "Could not parse integer end pulse")
-          p = q;
-        }
-      else if (strncmp(p,"np:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
-        { theR.nump = strtol(p+5,&q,0);
-          CHECK (p+5 == q, "Could not parse integer number of passes")
-          p = q;
-        }
-      else if (strncmp(p,"bq:",3) == 0 && is_integer[(int) p[3]] && p[4] == ':')
-        { theR.bqual = strtol(p+5,&q,0);
-          CHECK (p+5 == q, "Could not parse integer barcode quality")
-          p = q;
-        }
-      else if (strncmp(p,"rq:f:",5) == 0)
-        { theR.qual = strtod(p+5,&q);
-          CHECK (p+5 == q, "Could not parse floating point quality value")
-          p = q;
-        }
-      else if (quiver && strncmp(p,"dq:Z:",5) == 0)
-        QV_STREAM(0)
-      else if (quiver && strncmp(p,"dt:Z:",5) == 0)
-        QV_STREAM(1)
-      else if (quiver && strncmp(p,"iq:Z:",5) == 0)
-        QV_STREAM(2)
-      else if (quiver && strncmp(p,"mq:Z:",5) == 0)
-        QV_STREAM(3)
-      else if (quiver && strncmp(p,"sq:Z:",5) == 0)
-        QV_STREAM(4)
-      else if (strncmp(p,"bc:B:",5) == 0)
-        { if (p[5] == 'f' || p[5] == 'd' || p[5] == 'A' || p[5] == 'a')
-            { fprintf(stderr, "Type of barcode tag is not integer\n");
-              return (-1);
-            }
-          p += 6;
-          for (cnt = 0; *p == ',' && cnt < 2; cnt++)
-            { x = strtol(q=p+1,&p,0);
-              CHECK( p == q, "Cannot parse barcode value")
-              theR.bc[cnt] = x; 
-            }
-          CHECK ( *p == ',' || cnt < 2, "more than 2 barcode values?")
-          CHECK ( *p != '\t' && *p != '\n', "Cannot parse barcode values")
-        }
-      else if (strncmp(p,"pw:B:",5) == 0 && arrow)
-        { if (p[5] == 'f' || p[5] == 'd' || p[5] == 'A' || p[5] == 'a')
-            { fprintf(stderr, "Type of pulse width tag is not integer\n");
-              return (-1);
-            }
-          p += 6;
-          for (cnt = 0; *p == ',' && cnt < qlen; cnt++)
-            { x = strtol(q=p+1,&p,0);
-              CHECK( p == q, "Cannot parse pulse width value")
-              if (x >= 5)
-                x = 4;
-              arr[cnt] = x + ARR_CONVERT; 
-            }
-          CHECK ( *p == ',' || cnt < qlen, "pulse width arraw has different length than read")
-          CHECK ( *p != '\t' && *p != '\n', "Cannot parse pulse width values")
-        }
-      else
-        { while (*p != '\t' && *p != '\n')
-            p += 1;
-        }
-  }
-
   return (1);
 }
 
 static samRecord _SAM_EOF;
 samRecord *SAM_EOF = &_SAM_EOF;
 
-static char *Stream_Tag[5] = { "dg", "dt", "iq", "mq", "sq" };
-
-#define LOWER_OFFSET 32
-
-samRecord *sam_record_extract(samFile *sf, int status)
+samRecord *sam_record_extract(samFile *sf)
 { int64 ret;
 
   if (sf->format == bam)
-    ret = bam_record_read(sf,status);
+    ret = bam_record_read(sf);
   else
-    ret = sam_record_read(sf,status);
+    ret = sam_record_read(sf);
 
   if (ret <= 0)
     return (SAM_EOF);
-
-  if (theR.well < 0)
-    { fprintf(stderr,"%s: Record is missing zm-tag\n",Prog_Name);
-      return (NULL);
-    }
-  if (theR.beg < 0)
-    { fprintf(stderr,"%s: Record is missing qs-tag\n",Prog_Name);
-      return (NULL);
-    }
-  if (theR.end < 0)
-    { fprintf(stderr,"%s: Record is missing qe-tag\n",Prog_Name);
-      return (NULL);
-    }
-  if (theR.qual < 0.)
-    { fprintf(stderr,"%s: Record is missing rq-tag\n",Prog_Name);
-      return (NULL);
-    }
-  if ((status & HASPW) != 0)
-    { if (theR.snr[0] < 0.)
-        { fprintf(stderr,"%s: Record is missing sn-tag\n",Prog_Name);
-          return (NULL);
-        }
-      if (theR.arr[0] == 'A')
-        { fprintf(stderr,"%s: Record is missing pw-tag\n",Prog_Name);
-          return (NULL);
-        }
-    }
-  if ((status & HASQV) != 0)
-    { int i;
-
-      for (i = 0; i < 5; i++)
-        if (theR.qv[i][0] == '\0')
-          { fprintf(stderr,"%s: Record is missing %s-tag\n",Prog_Name,Stream_Tag[i]);
-            return (NULL);
-          }
-    }
-
-  if ((status & HASQV) != 0 && isupper(theR.qv[1][0]))
-    { int   i;
-      char *qv = theR.qv[1];
-
-      for (i = 0; i < theR.len; i++)
-        qv[i] += LOWER_OFFSET;
-    }
 
   return (&theR);
 }

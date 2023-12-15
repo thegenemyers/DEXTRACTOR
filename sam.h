@@ -30,18 +30,8 @@ typedef struct
 
 typedef struct
   { int   len;
-    int   well;
-    int   beg;
-    int   end;
-    float qual;
-    float snr[4];
-    int   bc[2];
-    int   bqual;
-    int   nump;
     char *header;
     char *seq;
-    char *arr;
-    char *qv[5];
   } samRecord;
 
   // sam_open: NULL => error, open file otherwise
@@ -59,11 +49,7 @@ int      sam_eof(samFile *sf);        //   Return non-zero if at eof
 
 extern samRecord *SAM_EOF;
 
-#define CODEC 0x1  //  Has pw and uses codec
-#define HASPW 0x2  //  Has pw
-#define HASQV 0x4  //  Has dt => rest of Quiver data is likely there
-
-int        sam_header_process(samFile *sf, int binary);
-samRecord *sam_record_extract(samFile *sf, int status);
+int        sam_header_process(samFile *sf, int numeric);
+samRecord *sam_record_extract(samFile *sf)
 
 #endif // _SAM_BAM
